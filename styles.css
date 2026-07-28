@@ -1,0 +1,179 @@
+/* styles.css */
+/* Main Push Container */
+#gemiboost-toc-container {
+  /* No longer position: fixed! It flows inside the flex container */
+  position: relative;
+  /* Start collapsed */
+  width: 0;
+  height: 100vh;
+  /* Flex shrink 0 so it doesn't get arbitrarily compressed */
+  flex-shrink: 0;
+  background-color: #ffffff;
+  overflow: hidden; /* Hide content when width is shrinking */
+  /* Native Gemini transition curve */
+  transition: width 0.3s cubic-bezier(0.2, 0, 0, 1), border-left 0.3s cubic-bezier(0.2, 0, 0, 1);
+  z-index: 10;
+  
+  /* Remove border when closed to prevent 1px glitch */
+  border-left: 0px solid transparent;
+}
+
+#gemiboost-toc-container.panel-visible {
+  width: 288px; /* Match standard left sidebar width */
+  border-left: 1px solid #e0e0e0;
+}
+
+/* Inner wrapper to prevent text squeezing during width animation */
+#gemiboost-toc-inner {
+  width: 288px; /* Fixed width matching the open state */
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  color: #1f1f1f;
+  font-family: 'Google Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* Header */
+.gemiboost-toc-header {
+  padding: 16px 24px;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.gemiboost-toc-title {
+  font-weight: 500;
+  font-size: 16px;
+  color: #1f1f1f;
+}
+
+.gemiboost-toc-close {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #5f6368;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+  margin-right: -8px;
+}
+
+.gemiboost-toc-close:hover {
+  background-color: #f1f3f4;
+}
+
+/* List container */
+#gemiboost-toc-list {
+  list-style: none;
+  padding: 8px 0;
+  margin: 0;
+  overflow-y: auto;
+  flex-grow: 1;
+}
+
+/* Custom Scrollbar */
+#gemiboost-toc-list::-webkit-scrollbar {
+  width: 6px;
+}
+#gemiboost-toc-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+#gemiboost-toc-list::-webkit-scrollbar-thumb {
+  background-color: #dadce0;
+  border-radius: 10px;
+}
+#gemiboost-toc-list:hover::-webkit-scrollbar-thumb {
+  background-color: #bdc1c6;
+}
+
+/* List Items */
+.gemiboost-toc-item {
+  padding: 14px 24px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #3c4043;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  word-break: break-word;
+}
+
+.gemiboost-toc-item:hover {
+  background-color: #f8f9fa;
+}
+
+.gemiboost-toc-empty {
+  padding: 24px;
+  text-align: center;
+  color: #5f6368;
+  font-size: 14px;
+}
+
+/* Toggle Button injected into the page (Fallback Fixed Style) */
+#gemiboost-toc-toggle {
+  position: fixed;
+  top: 10px;
+  right: 150px;
+  z-index: 99998;
+  background: #ffffff;
+  border: 1px solid #dadce0;
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #5f6368;
+  box-shadow: 0 1px 2px 0 rgba(60,64,67,0.3), 0 1px 3px 1px rgba(60,64,67,0.15);
+  transition: all 0.2s ease, transform 0.3s cubic-bezier(0.2, 0, 0, 1);
+}
+
+#gemiboost-toc-toggle:hover {
+  background: #f8f9fa;
+  color: #1a73e8;
+  box-shadow: 0 1px 3px 0 rgba(60,64,67,0.3), 0 4px 8px 3px rgba(60,64,67,0.15);
+}
+
+/* Toggle Button injected into the Native Toolbar */
+#gemiboost-toc-toggle.gemiboost-native-btn {
+  position: relative;
+  top: auto;
+  right: auto;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  width: 40px;
+  height: 40px;
+  margin-right: 4px;
+}
+
+#gemiboost-toc-toggle.gemiboost-native-btn:hover {
+  background-color: #f1f3f4;
+  color: #1a73e8;
+  box-shadow: none;
+}
+
+/* --------- Fix native fixed elements being covered by TOC drawer --------- */
+body top-bar-actions {
+  transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1) !important;
+}
+
+body.gemiboost-toc-open top-bar-actions {
+  transform: translateX(-288px) !important; /* Move left by the exact width of the TOC */
+}
+
+/* If the fallback fixed button is used (like in new chat), it should also move */
+body.gemiboost-toc-open #gemiboost-toc-toggle:not(.gemiboost-native-btn) {
+  transform: translateX(-288px);
+}
+
+/* Hide the toggle button completely when the TOC is open */
+body.gemiboost-toc-open #gemiboost-toc-toggle {
+  display: none !important;
+}

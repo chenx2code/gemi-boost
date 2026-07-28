@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "GemiBoost - Table of Contents for Gemini",
+  "version": "1.0.0",
+  "description": "A powerful table of contents and chat navigator for Google Gemini Web.",
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://gemini.google.com/app*"],
+      "css": ["styles.css"],
+      "js": [
+        "content-utils.js",
+        "content-catalog.js",
+        "content.js"
+      ],
+      "run_at": "document_end"
+    }
+  ]
+}
