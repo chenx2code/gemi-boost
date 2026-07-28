@@ -11,10 +11,20 @@ English | [简体中文](./README_zh.md)
 
 ## Installation
 
-Since this extension is in active development and not yet on the Chrome Web Store:
+Since this extension is not yet on the Chrome Web Store, you can install it manually using one of the methods below:
 
+### Method 1: Install from Release (Recommended)
+1. Go to the [Releases](../../releases) page.
+2. Download the latest `gemi-boost-vX.X.X.zip` file.
+3. Extract the zip file to a folder on your computer.
+4. Open Google Chrome and navigate to `chrome://extensions/`.
+5. Enable **"Developer mode"** in the top right corner.
+6. Click **"Load unpacked"** and select the extracted folder.
+7. Open [Gemini](https://gemini.google.com/) and start chatting!
+
+### Method 2: Install from Source
 1. Download or clone this repository.
 2. Open Google Chrome and navigate to `chrome://extensions/`.
 3. Enable **"Developer mode"** in the top right corner.
 4. Click **"Load unpacked"** and select the `gemi-boost` folder.
-5. Open [Gemini](https://gemini.google.com/) and start chatting! The TOC will appear on the right side.
+5. Open [Gemini](https://gemini.google.com/) and start chatting!

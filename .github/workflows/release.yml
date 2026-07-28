@@ -1,0 +1,115 @@
+name: Create Release
+
+on:
+      push:
+            branches:
+                  - master
+            paths:
+                  - "manifest.json"
+                  - "content.js"
+                  - "content-utils.js"
+                  - "content-catalog.js"
+                  - "styles.css"
+                  - "icons/**"
+      workflow_dispatch:
+
+jobs:
+      build-and-release:
+            name: Build and Release
+            runs-on: ubuntu-latest
+            permissions:
+                  contents: write
+            steps:
+                  - name: Check out code
+                    uses: actions/checkout@v4
+                    with:
+                          fetch-depth: 0
+
+                  - name: Get version from manifest
+                    id: get_version
+                    run: |
+                          VERSION=$(node -p "require('./manifest.json').version")
+                          echo "VERSION=$VERSION" >> $GITHUB_ENV
+                          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+                  - name: Check if tag exists
+                    id: check_tag
+                    run: |
+                          if git rev-parse "v${{ env.VERSION }}" >/dev/null 2>&1; then
+                            echo "Tag v${{ env.VERSION }} already exists, skipping release"
+                            echo "tag_exists=true" >> $GITHUB_OUTPUT
+                          else
+                            echo "tag_exists=false" >> $GITHUB_OUTPUT
+                          fi
+
+                  - name: Create Chrome extension package
+                    if: steps.check_tag.outputs.tag_exists == 'false'
+                    run: |
+                          mkdir -p dist
+                          zip -r dist/gemi-boost-v${{ env.VERSION }}.zip \
+                            icons \
+                            content.js \
+                            content-utils.js \
+                            content-catalog.js \
+                            styles.css \
+                            manifest.json
+
+                  - name: Generate changelog
+                    if: steps.check_tag.outputs.tag_exists == 'false'
+                    id: changelog
+                    run: |
+                          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+                          if [ -z "$LAST_TAG" ]; then
+                            CHANGELOG="Initial release v${{ env.VERSION }}"
+                            COMPARE_URL=""
+                          else
+                            CHANGELOG=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s" --no-merges)
+                            if [ -z "$CHANGELOG" ]; then
+                              CHANGELOG="Bug fixes and improvements"
+                            fi
+                            COMPARE_URL="**Full Changelog**: https://github.com/${{ github.repository }}/compare/${LAST_TAG}...v${{ env.VERSION }}"
+                          fi
+                          echo "CHANGELOG<<EOF" >> $GITHUB_ENV
+                          echo "$CHANGELOG" >> $GITHUB_ENV
+                          echo "EOF" >> $GITHUB_ENV
+                          echo "COMPARE_URL<<EOF" >> $GITHUB_ENV
+                          echo "$COMPARE_URL" >> $GITHUB_ENV
+                          echo "EOF" >> $GITHUB_ENV
+
+                  - name: Create GitHub Release
+                    if: steps.check_tag.outputs.tag_exists == 'false'
+                    uses: softprops/action-gh-release@v1
+                    with:
+                          tag_name: v${{ env.VERSION }}
+                          name: Release v${{ env.VERSION }}
+                          body: |
+                                ## GemiBoost v${{ env.VERSION }}
+
+                                ### What's New
+                                ${{ env.CHANGELOG }}
+
+                                ${{ env.COMPARE_URL }}
+
+                                ### Installation
+
+                                **For Chrome/Edge/Chromium browsers:**
+                                1. Download `gemi-boost-v${{ env.VERSION }}.zip` below
+                                2. Extract the zip file to a folder
+                                3. Open Chrome and navigate to `chrome://extensions/`
+                                4. Enable "Developer mode" (toggle in top right corner)
+                                5. Click "Load unpacked" and select the extracted folder
+                                6. The extension should now appear in your extensions list
+
+                                ### Quick Links
+                                - [Report Issues](https://github.com/${{ github.repository }}/issues)
+                                - [View Source Code](https://github.com/${{ github.repository }})
+                                - [Usage Guide](https://github.com/${{ github.repository }}#readme)
+
+                                ---
+                                *GemiBoost is a Chrome extension designed to enhance your experience on Google Gemini Web with a dynamic Table of Contents.*
+                          files: |
+                                dist/gemi-boost-v${{ env.VERSION }}.zip
+                          draft: false
+                          prerelease: false
+                    env:
+                          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
