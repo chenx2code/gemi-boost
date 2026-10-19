@@ -6,6 +6,7 @@ const Catalog = {
   toggleBtnId: 'gemiboost-toc-toggle',
   isCatalogOpen: false,
   lastQueryCount: 0,
+  lastSignature: '',
   initAttempts: 0,
   currentUrl: location.href,
 
@@ -150,24 +151,17 @@ const Catalog = {
     }
   },
 
-
-
   updateCatalog: function () {
     const list = document.getElementById('gemiboost-toc-list');
     if (!list) return;
 
     const userPrompts = document.querySelectorAll('user-query');
 
-    // Only re-render the entire list when the number of prompts actually changes
-    if (userPrompts.length === this.lastQueryCount && userPrompts.length !== 0) {
-      return;
-    }
-
-    this.lastQueryCount = userPrompts.length;
-    const currentScrollTop = list.scrollTop;
-    list.innerHTML = '';
-
     if (userPrompts.length === 0) {
+      if (this.lastQueryCount === 0 && this.lastSignature === 'empty') return;
+      this.lastQueryCount = 0;
+      this.lastSignature = 'empty';
+      list.innerHTML = '';
       const li = document.createElement('li');
       li.className = 'gemiboost-toc-empty';
       li.innerText = 'No conversation yet.';
@@ -175,16 +169,17 @@ const Catalog = {
       return;
     }
 
+    const extractedData = [];
+
     userPrompts.forEach((promptEl, index) => {
-      const li = document.createElement('li');
-      li.className = 'gemiboost-toc-item';
+      // 1. Text extraction using textContent to prevent off-screen / content-visibility empty string
+      const textNode = promptEl.querySelector('.query-text, p.query-text-line, .query-content') || promptEl;
+      let text = textNode.textContent ? textNode.textContent.trim() : '';
 
-      let text = promptEl.innerText.trim();
-
-      // [Core Fix]: Dynamically filter out hidden text intended for screen readers
+      // Dynamically filter out hidden text intended for screen readers (e.g. "You said ")
       const hiddenLabel = promptEl.querySelector('.cdk-visually-hidden, [class*="visually-hidden"]');
-      if (hiddenLabel && hiddenLabel.innerText) {
-        const hiddenText = hiddenLabel.innerText.trim();
+      if (hiddenLabel && hiddenLabel.textContent) {
+        const hiddenText = hiddenLabel.textContent.trim();
         if (text.startsWith(hiddenText)) {
           text = text.substring(hiddenText.length).trim();
         }
@@ -192,36 +187,35 @@ const Catalog = {
 
       const fileTexts = new Set();
 
-      // 1. Extract independent images
-      const images = Array.from(promptEl.querySelectorAll('img'));
-      images.forEach((img, imgIndex) => {
-        const parentFile = img.closest('.file-preview-container, [class*="file-preview"]');
-        if (parentFile && parentFile.innerText && parentFile.innerText.trim()) {
-          return;
+      // 2. Extract independent images (filter out user-icon avatar and system profile icons)
+      const images = Array.from(promptEl.querySelectorAll('img')).filter(img => {
+        if (img.classList.contains('user-icon') || (img.src && img.src.includes('googleusercontent.com/a/'))) {
+          return false;
         }
+        const parentFile = img.closest('.file-preview-container, [class*="file-preview"]');
+        if (parentFile && parentFile.textContent && parentFile.textContent.trim()) {
+          return false;
+        }
+        return true;
+      });
 
+      images.forEach((img, imgIndex) => {
         if (fileTexts.has(img.src)) return;
         fileTexts.add(img.src);
 
-        const li = document.createElement('li');
-        li.className = 'gemiboost-toc-item gemiboost-toc-attachment';
-        li.innerText = '[Image]';
-        li.addEventListener('click', () => {
-          // Dynamic lookup: prevents detached DOM issues when framework replaces original elements
-          const currentQuery = document.querySelectorAll('user-query')[index];
-          if (currentQuery) {
-            const currentImg = currentQuery.querySelectorAll('img')[imgIndex];
-            if (currentImg) currentImg.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            else currentQuery.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
+        extractedData.push({
+          type: 'image',
+          display: '[Image]',
+          className: 'gemiboost-toc-item gemiboost-toc-attachment',
+          queryIndex: index,
+          subIndex: imgIndex
         });
-        list.appendChild(li);
       });
 
-      // 2. Extract independent files (ignore empty framework shells and prevent nested duplicates)
+      // 3. Extract independent files (ignore empty framework shells and prevent nested duplicates)
       const files = Array.from(promptEl.querySelectorAll('.file-preview-container, [class*="file-preview"]'));
       files.forEach((file, fileIndex) => {
-        const fileText = file.innerText ? file.innerText.trim() : '';
+        const fileText = file.textContent ? file.textContent.trim() : '';
         if (!fileText) return;
 
         if (fileTexts.has(fileText)) return;
@@ -230,9 +224,6 @@ const Catalog = {
         if (text.includes(fileText)) {
           text = text.replace(fileText, '').trim();
         }
-
-        const li = document.createElement('li');
-        li.className = 'gemiboost-toc-item gemiboost-toc-attachment';
 
         const lines = fileText.split('\n').map(l => l.trim()).filter(l => l);
         const fName = lines.length > 1 ? lines[lines.length - 1] : lines[0];
@@ -262,43 +253,86 @@ const Catalog = {
           }
         }
 
-        li.innerText = `[${fileType}] ` + (fName.length > 30 ? fName.substring(0, 30) + '...' : fName);
-        li.addEventListener('click', () => {
-          const currentQuery = document.querySelectorAll('user-query')[index];
-          if (currentQuery) {
-            const currentFile = currentQuery.querySelectorAll('.file-preview-container, [class*="file-preview"]')[fileIndex];
-            if (currentFile) currentFile.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            else currentQuery.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
+        extractedData.push({
+          type: 'file',
+          display: `[${fileType}] ` + (fName.length > 30 ? fName.substring(0, 30) + '...' : fName),
+          className: 'gemiboost-toc-item gemiboost-toc-attachment',
+          queryIndex: index,
+          subIndex: fileIndex
         });
-        list.appendChild(li);
       });
 
-      // 3. Extract remaining pure text
+      // 4. Extract remaining pure text
       if (text) {
-        const li = document.createElement('li');
-        li.className = 'gemiboost-toc-item';
         const textPreview = text.length > 40 ? text.substring(0, 40) + '...' : text;
-        li.innerText = textPreview;
-        li.title = text;
-        li.addEventListener('click', () => {
-          const currentQuery = document.querySelectorAll('user-query')[index];
-          if (currentQuery) currentQuery.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        extractedData.push({
+          type: 'text',
+          display: textPreview,
+          title: text,
+          className: 'gemiboost-toc-item',
+          queryIndex: index
         });
-        list.appendChild(li);
       }
 
-      // 4. Extreme fallback: nothing was extracted
+      // 5. Extreme fallback: nothing was extracted
       if (!text && images.length === 0 && files.length === 0) {
-        const li = document.createElement('li');
-        li.className = 'gemiboost-toc-item';
-        li.innerText = '[Empty]';
-        li.addEventListener('click', () => {
-          const currentQuery = document.querySelectorAll('user-query')[index];
-          if (currentQuery) currentQuery.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        extractedData.push({
+          type: 'empty',
+          display: '[Empty]',
+          className: 'gemiboost-toc-item',
+          queryIndex: index
         });
-        list.appendChild(li);
       }
+    });
+
+    // Generate signature to avoid unnecessary DOM rebuilding while supporting dynamic content hydration
+    const signature = extractedData.map(it => `${it.queryIndex}:${it.type}:${it.display}`).join('|');
+    if (signature === this.lastSignature && userPrompts.length === this.lastQueryCount) {
+      return;
+    }
+
+    this.lastSignature = signature;
+    this.lastQueryCount = userPrompts.length;
+
+    const currentScrollTop = list.scrollTop;
+    list.innerHTML = '';
+
+    extractedData.forEach((item) => {
+      const li = document.createElement('li');
+      li.className = item.className;
+      li.innerText = item.display;
+      if (item.title) li.title = item.title;
+
+      li.addEventListener('click', () => {
+        // Dynamic lookup: prevents detached DOM issues when framework replaces original elements
+        const currentQuery = document.querySelectorAll('user-query')[item.queryIndex];
+        if (!currentQuery) return;
+
+        if (item.type === 'image') {
+          const validImgs = Array.from(currentQuery.querySelectorAll('img')).filter(img => {
+            if (img.classList.contains('user-icon') || (img.src && img.src.includes('googleusercontent.com/a/'))) {
+              return false;
+            }
+            const parentFile = img.closest('.file-preview-container, [class*="file-preview"]');
+            if (parentFile && parentFile.textContent && parentFile.textContent.trim()) {
+              return false;
+            }
+            return true;
+          });
+          const targetImg = validImgs[item.subIndex];
+          if (targetImg) targetImg.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          else currentQuery.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else if (item.type === 'file') {
+          const files = currentQuery.querySelectorAll('.file-preview-container, [class*="file-preview"]');
+          const targetFile = files[item.subIndex];
+          if (targetFile) targetFile.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          else currentQuery.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else {
+          currentQuery.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+
+      list.appendChild(li);
     });
 
     list.scrollTop = currentScrollTop;
@@ -313,6 +347,8 @@ const Catalog = {
       // [Instant Close]: Listen for URL changes and instantly close the sidebar, bypassing the 1000ms delay
       if (this.currentUrl !== location.href) {
         this.currentUrl = location.href;
+        this.lastSignature = '';
+        this.lastQueryCount = 0;
         if (this.isCatalogOpen) {
           const container = document.getElementById(this.containerId);
           if (container) {
@@ -337,6 +373,7 @@ const Catalog = {
         const mainContainer = document.querySelector('bard-sidenav-container');
         if (mainContainer) {
           this.createUI(mainContainer);
+          this.lastSignature = '';
           this.lastQueryCount = 0; // Force re-fetch of catalog content
           this.updateCatalog();    // [Critical Fix]: Generate catalog content synchronously immediately, do not wait for debouncedUpdate!
 
