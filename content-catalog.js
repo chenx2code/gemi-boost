@@ -4,14 +4,150 @@
 const Catalog = {
   containerId: 'gemiboost-toc-container',
   toggleBtnId: 'gemiboost-toc-toggle',
+  syncBtnId: 'gemiboost-toc-sync-btn',
   isCatalogOpen: false,
+  isSyncing: false,
   lastQueryCount: 0,
   lastSignature: '',
   initAttempts: 0,
   currentUrl: location.href,
+  cachedChatData: null,
+  lastExtractedData: [],
 
   init: function () {
     this.tryInjectUI();
+  },
+
+  getChatId: function () {
+    const match = location.pathname.match(/\/app\/([a-zA-Z0-9_-]+)/);
+    return match ? match[1] : null;
+  },
+
+  loadChatCache: function (chatId, callback) {
+    if (!chatId) return callback(null);
+    const key = `gemiboost_chat_${chatId}`;
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.get([key], (res) => {
+        callback(res ? res[key] : null);
+      });
+    } else {
+      try {
+        const raw = localStorage.getItem(key);
+        callback(raw ? JSON.parse(raw) : null);
+      } catch (e) {
+        callback(null);
+      }
+    }
+  },
+
+  saveChatCache: function (chatId, items, isFullySynced = false) {
+    if (!chatId || !items || items.length === 0) return;
+    const key = `gemiboost_chat_${chatId}`;
+    const data = {
+      items: items.map(it => ({
+        type: it.type,
+        display: it.display,
+        title: it.title || '',
+        className: it.className,
+        queryIndex: it.queryIndex,
+        subIndex: it.subIndex,
+        rawText: it.rawText || ''
+      })),
+      isFullySynced: !!isFullySynced,
+      updatedAt: Date.now()
+    };
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ [key]: data });
+    } else {
+      try {
+        localStorage.setItem(key, JSON.stringify(data));
+      } catch (e) {}
+    }
+  },
+
+  getChatScrollContainer: function () {
+    const uq = document.querySelector('user-query');
+    if (uq) {
+      let p = uq.parentElement;
+      while (p && p !== document.body) {
+        const s = window.getComputedStyle(p);
+        if ((s.overflowY === 'auto' || s.overflowY === 'scroll') && p.scrollHeight > p.clientHeight) {
+          return p;
+        }
+        p = p.parentElement;
+      }
+    }
+    return document.querySelector('infinite-scroller[data-test-id="chat-history-container"]')
+      || document.querySelector('infinite-scroller.chat-history')
+      || document.documentElement;
+  },
+
+  triggerHistorySync: async function () {
+    if (this.isSyncing) return;
+    const chatId = this.getChatId();
+    const scroller = this.getChatScrollContainer();
+    if (!scroller) return;
+
+    this.isSyncing = true;
+    const syncBtn = document.getElementById(this.syncBtnId);
+    if (syncBtn) {
+      syncBtn.classList.add('is-syncing');
+      syncBtn.setAttribute('title', 'Syncing complete history...');
+    }
+
+    let prevCount = document.querySelectorAll('user-query').length;
+    let noNewNodesCount = 0;
+    const maxLoops = 15;
+
+    for (let i = 0; i < maxLoops; i++) {
+      scroller.scrollTop = 0;
+      scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+
+      // Wait up to 1200ms for Gemini to fetch and mount older history turns
+      await new Promise(resolve => {
+        let timer = null;
+        const obs = new MutationObserver(() => {
+          const curr = document.querySelectorAll('user-query').length;
+          if (curr > prevCount) {
+            clearTimeout(timer);
+            obs.disconnect();
+            resolve(true);
+          }
+        });
+        obs.observe(scroller, { childList: true, subtree: true });
+        timer = setTimeout(() => {
+          obs.disconnect();
+          resolve(false);
+        }, 1200);
+      });
+
+      const currCount = document.querySelectorAll('user-query').length;
+      if (currCount > prevCount) {
+        prevCount = currCount;
+        noNewNodesCount = 0;
+        this.updateCatalog();
+      } else {
+        noNewNodesCount++;
+        if (noNewNodesCount >= 2) {
+          // Reached the true top of conversation history
+          break;
+        }
+      }
+    }
+
+    this.updateCatalog();
+    if (chatId && this.lastExtractedData && this.lastExtractedData.length > 0) {
+      this.saveChatCache(chatId, this.lastExtractedData, true);
+    }
+
+    this.isSyncing = false;
+    if (syncBtn) {
+      syncBtn.classList.remove('is-syncing');
+      syncBtn.setAttribute('title', `Synced! (${prevCount} prompts)`);
+      setTimeout(() => {
+        syncBtn.setAttribute('title', 'Sync complete history');
+      }, 3000);
+    }
   },
 
   tryInjectUI: function () {
@@ -20,11 +156,20 @@ const Catalog = {
 
     if (mainContainer) {
       this.createUI(mainContainer);
-      this.createToggleButton(); // Move here: attempt to create button after main framework is loaded
+      this.createToggleButton();
       this.observeDOM();
+
+      const chatId = this.getChatId();
+      if (chatId) {
+        this.loadChatCache(chatId, (cached) => {
+          if (cached && cached.items && cached.items.length > 0) {
+            this.cachedChatData = cached;
+            this.updateCatalog();
+          }
+        });
+      }
       setTimeout(() => this.updateCatalog(), 1000);
     } else {
-      // Fallback: if page is still loading, retry every 500ms, up to 20 times (10 seconds)
       this.initAttempts++;
       if (this.initAttempts < 20) {
         setTimeout(() => this.tryInjectUI(), 500);
@@ -48,13 +193,23 @@ const Catalog = {
     header.className = 'gemiboost-toc-header';
     header.innerHTML = `
       <div class="gemiboost-toc-title">Table of Contents</div>
-      <button class="gemiboost-toc-close" aria-label="Close">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/></svg>
-      </button>
+      <div class="gemiboost-toc-header-actions">
+        <button id="${this.syncBtnId}" class="gemiboost-toc-sync-btn" title="Sync complete history" aria-label="Sync complete history">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+          </svg>
+        </button>
+        <button class="gemiboost-toc-close" aria-label="Close">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/></svg>
+        </button>
+      </div>
     `;
 
     const closeBtn = header.querySelector('.gemiboost-toc-close');
     closeBtn.addEventListener('click', () => this.toggleCatalog(false));
+
+    const syncBtn = header.querySelector(`#${this.syncBtnId}`);
+    syncBtn.addEventListener('click', () => this.triggerHistorySync());
 
     const list = document.createElement('ul');
     list.id = 'gemiboost-toc-list';
@@ -68,16 +223,14 @@ const Catalog = {
   },
 
   createToggleButton: function () {
-    // Only display the button on specific chat pages (URL contains /app/ followed by a chat ID)
-    // The native new chat page pathname is usually '/app' or '/app/'
     const isChatPage = location.pathname.startsWith('/app/') && location.pathname.length > 5;
     let toggleBtn = document.getElementById(this.toggleBtnId);
 
     if (!isChatPage) {
-        if (toggleBtn) {
-            toggleBtn.remove();
-        }
-        return;
+      if (toggleBtn) {
+        toggleBtn.remove();
+      }
+      return;
     }
 
     // 1. Primary: Try to find the native three-dot menu button
@@ -108,20 +261,16 @@ const Catalog = {
       }
     }
 
-    // 3. Secondary: If kebab button not found (e.g. new conversation), insert directly into top toolbar container
+    // 3. Secondary: If kebab button not found, insert into top toolbar container
     const topBarActions = document.querySelector('top-bar-actions .buttons-container') || document.querySelector('top-bar-actions');
     if (topBarActions) {
       if (!toggleBtn) toggleBtn = this.buildButtonElement();
       if (toggleBtn.parentElement !== topBarActions) {
         toggleBtn.classList.add('gemiboost-native-btn');
-        // Insert at the far left of the toolbar
         topBarActions.insertBefore(toggleBtn, topBarActions.firstChild);
       }
       return;
     }
-
-    // If neither native container is found, just return and do not create fixed floating button!
-    // The MutationObserver will keep monitoring the DOM, and perfectly inject it when the native container is loaded.
   },
 
   buildButtonElement: function () {
@@ -144,6 +293,7 @@ const Catalog = {
       if (show) {
         container.classList.add('panel-visible');
         document.body.classList.add('gemiboost-toc-open');
+        this.updateCatalog();
       } else {
         container.classList.remove('panel-visible');
         document.body.classList.remove('gemiboost-toc-open');
@@ -151,23 +301,9 @@ const Catalog = {
     }
   },
 
-  updateCatalog: function () {
-    const list = document.getElementById('gemiboost-toc-list');
-    if (!list) return;
-
+  extractFromDOM: function () {
     const userPrompts = document.querySelectorAll('user-query');
-
-    if (userPrompts.length === 0) {
-      if (this.lastQueryCount === 0 && this.lastSignature === 'empty') return;
-      this.lastQueryCount = 0;
-      this.lastSignature = 'empty';
-      list.innerHTML = '';
-      const li = document.createElement('li');
-      li.className = 'gemiboost-toc-empty';
-      li.innerText = 'No conversation yet.';
-      list.appendChild(li);
-      return;
-    }
+    if (userPrompts.length === 0) return [];
 
     const extractedData = [];
 
@@ -185,6 +321,7 @@ const Catalog = {
         }
       }
 
+      const rawText = text;
       const fileTexts = new Set();
 
       // 2. Extract independent images (filter out user-icon avatar and system profile icons)
@@ -208,11 +345,12 @@ const Catalog = {
           display: '[Image]',
           className: 'gemiboost-toc-item gemiboost-toc-attachment',
           queryIndex: index,
-          subIndex: imgIndex
+          subIndex: imgIndex,
+          rawText: rawText
         });
       });
 
-      // 3. Extract independent files (ignore empty framework shells and prevent nested duplicates)
+      // 3. Extract independent files
       const files = Array.from(promptEl.querySelectorAll('.file-preview-container, [class*="file-preview"]'));
       files.forEach((file, fileIndex) => {
         const fileText = file.textContent ? file.textContent.trim() : '';
@@ -258,7 +396,8 @@ const Catalog = {
           display: `[${fileType}] ` + (fName.length > 30 ? fName.substring(0, 30) + '...' : fName),
           className: 'gemiboost-toc-item gemiboost-toc-attachment',
           queryIndex: index,
-          subIndex: fileIndex
+          subIndex: fileIndex,
+          rawText: rawText
         });
       });
 
@@ -270,7 +409,8 @@ const Catalog = {
           display: textPreview,
           title: text,
           className: 'gemiboost-toc-item',
-          queryIndex: index
+          queryIndex: index,
+          rawText: rawText
         });
       }
 
@@ -280,56 +420,180 @@ const Catalog = {
           type: 'empty',
           display: '[Empty]',
           className: 'gemiboost-toc-item',
-          queryIndex: index
+          queryIndex: index,
+          rawText: ''
         });
       }
     });
 
-    // Generate signature to avoid unnecessary DOM rebuilding while supporting dynamic content hydration
-    const signature = extractedData.map(it => `${it.queryIndex}:${it.type}:${it.display}`).join('|');
-    if (signature === this.lastSignature && userPrompts.length === this.lastQueryCount) {
+    return extractedData;
+  },
+
+  mergeWithCache: function (domItems, cachedItems) {
+    if (!cachedItems || cachedItems.length === 0) return domItems;
+    if (!domItems || domItems.length === 0) return cachedItems;
+
+    const domFirstRaw = domItems[0]?.rawText;
+    const domFirstDisplay = domItems[0]?.display;
+
+    let matchIdx = -1;
+    if (domFirstRaw) {
+      matchIdx = cachedItems.findIndex(c => c.rawText === domFirstRaw && c.type === domItems[0].type);
+    }
+    if (matchIdx === -1 && domFirstDisplay) {
+      matchIdx = cachedItems.findIndex(c => c.display === domFirstDisplay && c.type === domItems[0].type);
+    }
+
+    if (matchIdx > 0) {
+      const missingEarlier = cachedItems.slice(0, matchIdx).map(c => ({
+        ...c,
+        isOffDOM: true
+      }));
+      return [...missingEarlier, ...domItems];
+    }
+
+    if (cachedItems.length > domItems.length) {
+      const missingCount = cachedItems.length - domItems.length;
+      const earlier = cachedItems.slice(0, missingCount).map(c => ({
+        ...c,
+        isOffDOM: true
+      }));
+      return [...earlier, ...domItems];
+    }
+
+    return domItems;
+  },
+
+  navigateToItem: function (item) {
+    let targetQuery = null;
+    if (!item.isOffDOM && typeof item.queryIndex === 'number') {
+      const queries = document.querySelectorAll('user-query');
+      if (item.queryIndex < queries.length) {
+        targetQuery = queries[item.queryIndex];
+      }
+    }
+
+    // Verify targetQuery matches item text
+    if (targetQuery && item.rawText) {
+      const qText = (targetQuery.querySelector('.query-text, p.query-text-line, .query-content') || targetQuery).textContent.trim();
+      if (!qText.includes(item.rawText.slice(0, 15))) {
+        targetQuery = null;
+      }
+    }
+
+    // Fallback: search all current DOM queries
+    if (!targetQuery && item.rawText) {
+      const queries = Array.from(document.querySelectorAll('user-query'));
+      targetQuery = queries.find(q => {
+        const textNode = q.querySelector('.query-text, p.query-text-line, .query-content') || q;
+        return textNode.textContent.trim().includes(item.rawText.slice(0, 20));
+      });
+    }
+
+    if (targetQuery) {
+      // Element is present in DOM: smooth scroll straight to it
+      this.scrollToTargetElement(targetQuery, item);
+      return;
+    }
+
+    // Element is an earlier turn not yet rendered in DOM: trigger smooth upward scroll to mount it
+    const scroller = this.getChatScrollContainer();
+    if (!scroller) return;
+
+    scroller.scrollTop = 0;
+    scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+
+    let attempts = 0;
+    const interval = setInterval(() => {
+      attempts++;
+      const queries = Array.from(document.querySelectorAll('user-query'));
+      const found = queries.find(q => {
+        const textNode = q.querySelector('.query-text, p.query-text-line, .query-content') || q;
+        return item.rawText ? textNode.textContent.trim().includes(item.rawText.slice(0, 20)) : false;
+      });
+
+      if (found) {
+        clearInterval(interval);
+        this.scrollToTargetElement(found, item);
+        this.updateCatalog();
+      } else if (attempts >= 10) {
+        clearInterval(interval);
+        scroller.scrollTop = 0;
+      }
+    }, 200);
+  },
+
+  scrollToTargetElement: function (targetQuery, item) {
+    if (item.type === 'image') {
+      const validImgs = Array.from(targetQuery.querySelectorAll('img')).filter(img => {
+        if (img.classList.contains('user-icon') || (img.src && img.src.includes('googleusercontent.com/a/'))) {
+          return false;
+        }
+        const parentFile = img.closest('.file-preview-container, [class*="file-preview"]');
+        if (parentFile && parentFile.textContent && parentFile.textContent.trim()) {
+          return false;
+        }
+        return true;
+      });
+      const targetImg = validImgs[item.subIndex];
+      if (targetImg) targetImg.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      else targetQuery.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else if (item.type === 'file') {
+      const files = targetQuery.querySelectorAll('.file-preview-container, [class*="file-preview"]');
+      const targetFile = files[item.subIndex];
+      if (targetFile) targetFile.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      else targetQuery.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else {
+      targetQuery.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  },
+
+  updateCatalog: function () {
+    const list = document.getElementById('gemiboost-toc-list');
+    if (!list) return;
+
+    const domItems = this.extractFromDOM();
+    const cachedItems = this.cachedChatData?.items || [];
+    const finalItems = this.mergeWithCache(domItems, cachedItems);
+
+    if (finalItems.length === 0) {
+      if (this.lastQueryCount === 0 && this.lastSignature === 'empty') return;
+      this.lastQueryCount = 0;
+      this.lastSignature = 'empty';
+      list.innerHTML = '';
+      const li = document.createElement('li');
+      li.className = 'gemiboost-toc-empty';
+      li.innerText = 'No conversation yet.';
+      list.appendChild(li);
+      return;
+    }
+
+    const signature = finalItems.map(it => `${it.queryIndex}:${it.type}:${it.display}`).join('|');
+    if (signature === this.lastSignature && finalItems.length === this.lastQueryCount) {
       return;
     }
 
     this.lastSignature = signature;
-    this.lastQueryCount = userPrompts.length;
+    this.lastQueryCount = finalItems.length;
+    this.lastExtractedData = finalItems;
+
+    // Cache the extracted items for current session
+    const chatId = this.getChatId();
+    if (chatId && domItems.length > 0 && !this.isSyncing) {
+      this.saveChatCache(chatId, finalItems, this.cachedChatData?.isFullySynced || false);
+    }
 
     const currentScrollTop = list.scrollTop;
     list.innerHTML = '';
 
-    extractedData.forEach((item) => {
+    finalItems.forEach((item) => {
       const li = document.createElement('li');
       li.className = item.className;
       li.innerText = item.display;
       if (item.title) li.title = item.title;
 
       li.addEventListener('click', () => {
-        // Dynamic lookup: prevents detached DOM issues when framework replaces original elements
-        const currentQuery = document.querySelectorAll('user-query')[item.queryIndex];
-        if (!currentQuery) return;
-
-        if (item.type === 'image') {
-          const validImgs = Array.from(currentQuery.querySelectorAll('img')).filter(img => {
-            if (img.classList.contains('user-icon') || (img.src && img.src.includes('googleusercontent.com/a/'))) {
-              return false;
-            }
-            const parentFile = img.closest('.file-preview-container, [class*="file-preview"]');
-            if (parentFile && parentFile.textContent && parentFile.textContent.trim()) {
-              return false;
-            }
-            return true;
-          });
-          const targetImg = validImgs[item.subIndex];
-          if (targetImg) targetImg.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          else currentQuery.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        } else if (item.type === 'file') {
-          const files = currentQuery.querySelectorAll('.file-preview-container, [class*="file-preview"]');
-          const targetFile = files[item.subIndex];
-          if (targetFile) targetFile.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          else currentQuery.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        } else {
-          currentQuery.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
+        this.navigateToItem(item);
       });
 
       list.appendChild(li);
@@ -341,50 +605,55 @@ const Catalog = {
   observeDOM: function () {
     const debouncedUpdate = Utils.debounce(() => {
       this.updateCatalog();
-      this.createToggleButton(); // Check if button still exists after DOM changes stabilize, recreate if framework removed it
+      this.createToggleButton();
     }, 1000);
+
     const observer = new MutationObserver((mutations) => {
-      // [Instant Close]: Listen for URL changes and instantly close the sidebar, bypassing the 1000ms delay
       if (this.currentUrl !== location.href) {
         this.currentUrl = location.href;
         this.lastSignature = '';
         this.lastQueryCount = 0;
+        this.cachedChatData = null;
+
         if (this.isCatalogOpen) {
           const container = document.getElementById(this.containerId);
           if (container) {
-            // Disable transition animation for instant disappearance
             container.style.transition = 'none';
             this.toggleCatalog(false);
-            // Force rendering, then restore animation
             void container.offsetHeight;
             container.style.transition = '';
           } else {
             this.toggleCatalog(false);
           }
         }
-        // [State Reset]: Instantly destroy the old state when switching to any historical or new chat.
-        // The new button will be handled by createToggleButton after 1000ms based on the new page.
+
         const btn = document.getElementById(this.toggleBtnId);
         if (btn) btn.remove();
+
+        const newChatId = this.getChatId();
+        if (newChatId) {
+          this.loadChatCache(newChatId, (cached) => {
+            if (cached && cached.items && cached.items.length > 0) {
+              this.cachedChatData = cached;
+              this.updateCatalog();
+            }
+          });
+        }
       }
 
-      // [Critical! Structural guard cannot be delayed]: Rescue immediately if main container is destroyed, otherwise it causes 1s UI Jank
       if (!document.getElementById(this.containerId)) {
         const mainContainer = document.querySelector('bard-sidenav-container');
         if (mainContainer) {
           this.createUI(mainContainer);
           this.lastSignature = '';
-          this.lastQueryCount = 0; // Force re-fetch of catalog content
-          this.updateCatalog();    // [Critical Fix]: Generate catalog content synchronously immediately, do not wait for debouncedUpdate!
+          this.lastQueryCount = 0;
+          this.updateCatalog();
 
           if (this.isCatalogOpen) {
             const container = document.getElementById(this.containerId);
-            // Temporarily disable transition to prevent slide-out animation since it should already be open
             container.style.transition = 'none';
             container.classList.add('panel-visible');
-            // Force browser to apply the above styles
             void container.offsetHeight;
-            // Restore animation
             container.style.transition = '';
           }
         }

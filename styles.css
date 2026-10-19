@@ -49,7 +49,15 @@
   color: #1f1f1f;
 }
 
-.gemiboost-toc-close {
+.gemiboost-toc-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: -8px;
+}
+
+.gemiboost-toc-close,
+.gemiboost-toc-sync-btn {
   background: transparent;
   border: none;
   cursor: pointer;
@@ -60,12 +68,26 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.2s;
-  margin-right: -8px;
+  transition: background-color 0.2s, color 0.2s;
 }
 
-.gemiboost-toc-close:hover {
+.gemiboost-toc-close:hover,
+.gemiboost-toc-sync-btn:hover {
   background-color: #f1f3f4;
+  color: #1a73e8;
+}
+
+.gemiboost-toc-sync-btn.is-syncing svg {
+  animation: gemiboost-spin 1s linear infinite;
+}
+
+@keyframes gemiboost-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* List container */
