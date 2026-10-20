@@ -35,25 +35,31 @@
 
 /* Header */
 .gemiboost-toc-header {
-  padding: 16px 24px;
+  padding: 14px 20px;
   border-bottom: 1px solid #e0e0e0;
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-shrink: 0;
+  gap: 8px;
 }
 
 .gemiboost-toc-title {
   font-weight: 500;
-  font-size: 16px;
+  font-size: 15px;
   color: #1f1f1f;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .gemiboost-toc-header-actions {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-right: -8px;
+  margin-right: -4px;
+  flex-shrink: 0;
 }
 
 .gemiboost-toc-close,
@@ -68,7 +74,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.2s, color 0.2s;
+  font-family: inherit;
+  transition: all 0.25s cubic-bezier(0.2, 0, 0, 1);
+  white-space: nowrap;
 }
 
 .gemiboost-toc-close:hover,
@@ -88,8 +96,46 @@
   outline-offset: 1px;
 }
 
+/* State 1: Syncing Pill */
+.gemiboost-toc-sync-btn.is-syncing {
+  width: auto;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 14px;
+  background-color: #e8f0fe;
+  color: #1a73e8;
+  font-size: 12px;
+  font-weight: 500;
+  gap: 5px;
+  cursor: default;
+}
+
 .gemiboost-toc-sync-btn.is-syncing svg {
   animation: gemiboost-spin 1s linear infinite;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+/* State 2: Synced Completed Pill */
+.gemiboost-toc-sync-btn.is-synced {
+  width: auto;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 14px;
+  background-color: #e6f4ea;
+  color: #137333;
+  font-size: 12px;
+  font-weight: 500;
+  gap: 5px;
+  cursor: default;
+}
+
+.gemiboost-toc-sync-btn.is-synced svg {
+  animation: none;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
 }
 
 @keyframes gemiboost-spin {

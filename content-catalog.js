@@ -147,8 +147,15 @@ const Catalog = {
 
     const syncBtn = document.getElementById(this.syncBtnId);
     if (syncBtn) {
+      syncBtn.classList.remove('is-synced');
       syncBtn.classList.add('is-syncing');
-      syncBtn.setAttribute('title', 'Syncing complete history... (Click again to cancel)');
+      syncBtn.innerHTML = `
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+          <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+        </svg>
+        <span>同步中</span>
+      `;
+      syncBtn.setAttribute('title', '正在加载全部历史记录... (再次点击可取消)');
     }
 
     let prevCount = document.querySelectorAll('user-query').length;
@@ -168,7 +175,7 @@ const Catalog = {
         prevFirstSig = currFirstSig;
         this.updateCatalog();
         if (syncBtn) {
-          syncBtn.setAttribute('title', `Syncing... (${currCount} items loaded, click to stop)`);
+          syncBtn.setAttribute('title', `正在同步... (已加载 ${currCount} 条，点击可停止)`);
         }
       }
     });
@@ -203,7 +210,7 @@ const Catalog = {
         // Check if waiting for older batches
         const elapsedSinceActivity = Date.now() - lastActivityTime;
         if (elapsedSinceActivity > 1500 && syncBtn) {
-          syncBtn.setAttribute('title', `Syncing... (${prevCount} items loaded, checking for older messages...)`);
+          syncBtn.setAttribute('title', `正在同步... (已加载 ${prevCount} 条，正在检查更早的历史...)`);
         }
 
         // Check if no new prompts or height changes have occurred for 4.0 seconds
@@ -219,9 +226,6 @@ const Catalog = {
       obs.disconnect();
       this.isSyncing = false;
       this.abortSync = false;
-      if (syncBtn) {
-        syncBtn.classList.remove('is-syncing');
-      }
     }
 
     // Extract the pristine full list directly from the live DOM in top-to-bottom order
@@ -233,10 +237,25 @@ const Catalog = {
     this.updateCatalog();
 
     if (syncBtn) {
-      syncBtn.setAttribute('title', `Synced! (${prevCount} prompts)`);
+      syncBtn.classList.remove('is-syncing');
+      syncBtn.classList.add('is-synced');
+      syncBtn.innerHTML = `
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+          <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+        </svg>
+        <span>同步完成</span>
+      `;
+      syncBtn.setAttribute('title', `已完整同步全部 ${prevCount} 条历史提问`);
+
       setTimeout(() => {
+        syncBtn.classList.remove('is-synced');
+        syncBtn.innerHTML = `
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+          </svg>
+        `;
         syncBtn.setAttribute('title', 'Refresh & sync full history');
-      }, 3000);
+      }, 1800);
     }
   },
 
