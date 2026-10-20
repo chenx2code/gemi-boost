@@ -150,10 +150,11 @@ const Catalog = {
       syncBtn.classList.remove('is-synced');
       syncBtn.classList.add('is-syncing');
       syncBtn.innerHTML = `
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-          <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
-        </svg>
-        <span>同步中</span>
+        <span class="gemiboost-spinner-composited">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+          </svg>
+        </span>
       `;
       syncBtn.setAttribute('title', '正在加载全部历史记录... (再次点击可取消)');
     }
@@ -174,6 +175,13 @@ const Catalog = {
         prevCount = currCount;
         prevFirstSig = currFirstSig;
         this.updateCatalog();
+
+        // Immediately pin view to the newly arrived earliest prompt
+        const newFirst = document.querySelector('user-query');
+        if (newFirst) {
+          newFirst.scrollIntoView({ block: 'start' });
+        }
+
         if (syncBtn) {
           syncBtn.setAttribute('title', `正在同步... (已加载 ${currCount} 条，点击可停止)`);
         }
@@ -183,14 +191,20 @@ const Catalog = {
     obs.observe(scroller, { childList: true, subtree: true });
 
     // Continuous scroll pulsing loop
-    // Keeps the icon spinning while loading, giving ample retry buffer (4.0s) for server RPCs across all batches
+    // Keeps the icon spinning on GPU thread while loading, giving ample retry buffer (4.0s) for server RPCs across all batches
     const maxDurationMs = 120000; // 2 minutes safety ceiling
     const startTime = Date.now();
     const INACTIVITY_TIMEOUT_MS = 4000;
 
     try {
       while (!this.abortSync && (Date.now() - startTime < maxDurationMs)) {
-        // Continuously nudge scroll to 0 to maintain top-boundary trigger on Gemini's infinite-scroller
+        // 1. Keep view pinned to the earliest loaded prompt (first catalog item position)
+        const firstQuery = document.querySelector('user-query');
+        if (firstQuery) {
+          firstQuery.scrollIntoView({ block: 'start' });
+        }
+
+        // 2. Continuously nudge scroll to 0 with micro-nudge to maintain top-boundary trigger on Gemini CDK scroller
         if (scroller.scrollTop > 0) {
           scroller.scrollTop = 0;
         } else {
@@ -202,8 +216,9 @@ const Catalog = {
         scroller.dispatchEvent(new WheelEvent('wheel', { deltaY: -200, bubbles: true }));
 
         // Detect if content height expanded (signals newly prepended historical content)
-        if (scroller.scrollHeight > prevScrollHeight + 10) {
-          prevScrollHeight = scroller.scrollHeight;
+        const currentScrollHeight = scroller.scrollHeight;
+        if (currentScrollHeight > prevScrollHeight + 10) {
+          prevScrollHeight = currentScrollHeight;
           lastActivityTime = Date.now();
         }
 
@@ -213,7 +228,7 @@ const Catalog = {
           syncBtn.setAttribute('title', `正在同步... (已加载 ${prevCount} 条，正在检查更早的历史...)`);
         }
 
-        // Check if no new prompts or height changes have occurred for 4.0 seconds
+        // Check if no new prompts or height changes have occurred for 4.0 seconds while parked at top
         if (elapsedSinceActivity > INACTIVITY_TIMEOUT_MS) {
           // Reached the true top of conversation history!
           break;
@@ -228,6 +243,14 @@ const Catalog = {
       this.abortSync = false;
     }
 
+    // Smoothly align viewport to the absolute first prompt at the very top of history
+    const finalFirstQuery = document.querySelector('user-query');
+    if (finalFirstQuery) {
+      finalFirstQuery.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      scroller.scrollTop = 0;
+    }
+
     // Extract the pristine full list directly from the live DOM in top-to-bottom order
     const fullDomItems = this.extractFromDOM();
     if (chatId && fullDomItems && fullDomItems.length > 0) {
@@ -240,10 +263,9 @@ const Catalog = {
       syncBtn.classList.remove('is-syncing');
       syncBtn.classList.add('is-synced');
       syncBtn.innerHTML = `
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
           <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
         </svg>
-        <span>同步完成</span>
       `;
       syncBtn.setAttribute('title', `已完整同步全部 ${prevCount} 条历史提问`);
 
@@ -255,7 +277,7 @@ const Catalog = {
           </svg>
         `;
         syncBtn.setAttribute('title', 'Refresh & sync full history');
-      }, 1800);
+      }, 1200);
     }
   },
 

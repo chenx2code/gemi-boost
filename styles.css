@@ -96,54 +96,53 @@
   outline-offset: 1px;
 }
 
-/* State 1: Syncing Pill */
+/* State 1: Syncing (Hardware-Accelerated Continuous Spin) */
 .gemiboost-toc-sync-btn.is-syncing {
-  width: auto;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 14px;
-  background-color: #e8f0fe;
   color: #1a73e8;
-  font-size: 12px;
-  font-weight: 500;
-  gap: 5px;
+  background-color: #e8f0fe;
   cursor: default;
 }
 
-.gemiboost-toc-sync-btn.is-syncing svg {
-  animation: gemiboost-spin 1s linear infinite;
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
+/* Independent GPU Composited Layer for the spinner */
+.gemiboost-spinner-composited {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  will-change: transform;
+  transform: translateZ(0);
+  animation: gemiboost-compositor-spin 0.85s linear infinite;
+  backface-visibility: hidden;
+  perspective: 1000px;
 }
 
-/* State 2: Synced Completed Pill */
+.gemiboost-spinner-composited svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+/* State 2: Synced Completed (Green Checkmark Feedback) */
 .gemiboost-toc-sync-btn.is-synced {
-  width: auto;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 14px;
-  background-color: #e6f4ea;
   color: #137333;
-  font-size: 12px;
-  font-weight: 500;
-  gap: 5px;
+  background-color: #e6f4ea;
   cursor: default;
 }
 
 .gemiboost-toc-sync-btn.is-synced svg {
-  animation: none;
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: block;
 }
 
-@keyframes gemiboost-spin {
+/* Compositor-only rotation animation running on GPU thread */
+@keyframes gemiboost-compositor-spin {
   from {
-    transform: rotate(0deg);
+    transform: rotate(0deg) translateZ(0);
   }
   to {
-    transform: rotate(360deg);
+    transform: rotate(360deg) translateZ(0);
   }
 }
 
