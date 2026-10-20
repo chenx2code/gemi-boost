@@ -7,6 +7,7 @@ const Catalog = {
   syncBtnId: 'gemiboost-toc-sync-btn',
   isCatalogOpen: false,
   isSyncing: false,
+  abortSync: false,
   lastQueryCount: 0,
   lastSignature: '',
   initAttempts: 0,
@@ -83,27 +84,35 @@ const Catalog = {
   },
 
   triggerHistorySync: async function () {
-    if (this.isSyncing) return;
+    if (this.isSyncing) {
+      // If clicked while already syncing, cancel the ongoing sync loop
+      this.abortSync = true;
+      return;
+    }
     const chatId = this.getChatId();
     const scroller = this.getChatScrollContainer();
     if (!scroller) return;
 
     this.isSyncing = true;
+    this.abortSync = false;
     const syncBtn = document.getElementById(this.syncBtnId);
     if (syncBtn) {
       syncBtn.classList.add('is-syncing');
-      syncBtn.setAttribute('title', 'Syncing complete history...');
+      syncBtn.setAttribute('title', 'Syncing complete history... (Click again to cancel)');
     }
 
     let prevCount = document.querySelectorAll('user-query').length;
     let noNewNodesCount = 0;
-    const maxLoops = 15;
+    // Set a high safety cap (100 batches), sufficient to load ~1000 history items
+    const maxLoops = 100;
 
     for (let i = 0; i < maxLoops; i++) {
+      if (this.abortSync) break;
+
       scroller.scrollTop = 0;
       scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
 
-      // Wait up to 1200ms for Gemini to fetch and mount older history turns
+      // Wait up to 1500ms for Gemini to fetch and mount older history turns
       await new Promise(resolve => {
         let timer = null;
         const obs = new MutationObserver(() => {
@@ -118,18 +127,23 @@ const Catalog = {
         timer = setTimeout(() => {
           obs.disconnect();
           resolve(false);
-        }, 1200);
+        }, 1500);
       });
+
+      if (this.abortSync) break;
 
       const currCount = document.querySelectorAll('user-query').length;
       if (currCount > prevCount) {
         prevCount = currCount;
         noNewNodesCount = 0;
         this.updateCatalog();
+        if (syncBtn) {
+          syncBtn.setAttribute('title', `Syncing... (${currCount} items loaded, click to stop)`);
+        }
       } else {
         noNewNodesCount++;
+        // If consecutive attempts return no new nodes, we have reached the very first prompt
         if (noNewNodesCount >= 2) {
-          // Reached the true top of conversation history
           break;
         }
       }
@@ -141,6 +155,7 @@ const Catalog = {
     }
 
     this.isSyncing = false;
+    this.abortSync = false;
     if (syncBtn) {
       syncBtn.classList.remove('is-syncing');
       syncBtn.setAttribute('title', `Synced! (${prevCount} prompts)`);
