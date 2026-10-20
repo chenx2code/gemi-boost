@@ -153,21 +153,32 @@ const Catalog = {
 
     let prevCount = document.querySelectorAll('user-query').length;
     let prevFirstSig = this.getFirstQueryText();
+    let prevScrollHeight = scroller.scrollHeight;
     let lastActivityTime = Date.now();
 
     // Set up continuous MutationObserver to detect every incoming batch in real-time
-    const obs = new MutationObserver(() => {
+    const obs = new MutationObserver((mutations) => {
+      let hasAddedNodes = false;
+      for (const m of mutations) {
+        if (m.addedNodes.length > 0) {
+          hasAddedNodes = true;
+          break;
+        }
+      }
+
       const currCount = document.querySelectorAll('user-query').length;
       const currFirstSig = this.getFirstQueryText();
 
-      // Detect either new query count or change in the earliest query text (handles virtualized scrolling)
-      if (currCount > prevCount || (currFirstSig && currFirstSig !== prevFirstSig)) {
-        prevCount = currCount;
-        prevFirstSig = currFirstSig;
+      // Detect either new query count, earliest query change, or newly added DOM nodes in scroller
+      if (currCount > prevCount || (currFirstSig && currFirstSig !== prevFirstSig) || hasAddedNodes) {
         lastActivityTime = Date.now(); // Reset activity timer because new nodes arrived!
-        this.updateCatalog();
-        if (syncBtn) {
-          syncBtn.setAttribute('title', `Syncing... (${currCount} items loaded, click to stop)`);
+        if (currCount > prevCount || (currFirstSig && currFirstSig !== prevFirstSig)) {
+          prevCount = currCount;
+          prevFirstSig = currFirstSig;
+          this.updateCatalog();
+          if (syncBtn) {
+            syncBtn.setAttribute('title', `Syncing... (${currCount} items loaded, click to stop)`);
+          }
         }
       }
     });
@@ -175,9 +186,10 @@ const Catalog = {
     obs.observe(scroller, { childList: true, subtree: true });
 
     // Continuous scroll pulsing loop
-    // Keeps the icon spinning continuously until Gemini genuinely stops emitting new nodes for 3.5 continuous seconds
+    // Keeps the icon spinning continuously until Gemini genuinely stops emitting new nodes for 5.0 continuous seconds
     const maxDurationMs = 120000; // 2 minutes safety ceiling
     const startTime = Date.now();
+    const INACTIVITY_TIMEOUT_MS = 5000;
 
     try {
       while (!this.abortSync && (Date.now() - startTime < maxDurationMs)) {
@@ -192,8 +204,20 @@ const Catalog = {
         scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
         scroller.dispatchEvent(new WheelEvent('wheel', { deltaY: -200, bubbles: true }));
 
-        // Check if no new nodes or changes have arrived for 3.5 seconds
-        if (Date.now() - lastActivityTime > 3500) {
+        // Detect if content height expanded (signals newly prepended nodes)
+        if (scroller.scrollHeight > prevScrollHeight) {
+          prevScrollHeight = scroller.scrollHeight;
+          lastActivityTime = Date.now();
+        }
+
+        // Detect if Gemini has an active loading spinner or progress bar
+        const hasSpinner = !!document.querySelector('mat-spinner, mat-progress-spinner, [role="progressbar"], .loading-spinner, [class*="loading-indicator"], gem-progress-indicator, .chat-loader');
+        if (hasSpinner) {
+          lastActivityTime = Date.now();
+        }
+
+        // Check if no new nodes, height changes, or spinners have been active for 5.0 seconds
+        if (Date.now() - lastActivityTime > INACTIVITY_TIMEOUT_MS) {
           // Reached the true top of conversation history!
           break;
         }
@@ -507,13 +531,18 @@ const Catalog = {
     if (!cachedItems || cachedItems.length === 0) return domItems;
     if (!domItems || domItems.length === 0) return cachedItems;
 
+    const isMatch = (a, b) =>
+      a.type === b.type &&
+      a.rawText === b.rawText &&
+      (a.subIndex === b.subIndex || (a.subIndex === undefined && b.subIndex === undefined));
+
     // Validate relative order of cachedItems against domItems
     // domItems reflects the ground-truth top-to-bottom order from the DOM
     let lastFoundIndex = -1;
     let isCorrupted = false;
 
     for (const d of domItems) {
-      const idx = cachedItems.findIndex(c => c.type === d.type && c.rawText === d.rawText);
+      const idx = cachedItems.findIndex(c => isMatch(c, d));
       if (idx !== -1) {
         if (idx < lastFoundIndex) {
           isCorrupted = true;
@@ -533,40 +562,56 @@ const Catalog = {
 
     // Only use cached items if the cache is marked as fully synced
     if (this.cachedChatData && this.cachedChatData.isFullySynced) {
-      const lastCached = cachedItems[cachedItems.length - 1];
-      const matchInDomIdx = domItems.findIndex(d => d.type === lastCached.type && d.rawText === lastCached.rawText);
+      // Find earliest and latest matching indexes in domItems against cachedItems
+      let firstDomMatch = -1;
+      let lastDomMatch = -1;
 
-      // Check if user sent new prompts at the bottom after sync
-      if (matchInDomIdx !== -1 && matchInDomIdx < domItems.length - 1) {
-        const newItems = domItems.slice(matchInDomIdx + 1);
-        const updated = [...cachedItems, ...newItems];
+      for (let i = 0; i < domItems.length; i++) {
+        const d = domItems[i];
+        const inCache = cachedItems.some(c => isMatch(c, d));
+        if (inCache) {
+          if (firstDomMatch === -1) firstDomMatch = i;
+          lastDomMatch = i;
+        }
+      }
+
+      let updated = [...cachedItems];
+      let hasChanges = false;
+
+      // 1. Prepend historical items loaded at the top (e.g. [File] Complete 基金 and earliest prompts)
+      if (firstDomMatch > 0) {
+        const prepended = domItems.slice(0, firstDomMatch);
+        updated = [...prepended, ...updated];
+        hasChanges = true;
+      }
+
+      // 2. Append new user messages sent at the bottom
+      if (lastDomMatch !== -1 && lastDomMatch < domItems.length - 1) {
+        const appended = domItems.slice(lastDomMatch + 1);
+        updated = [...updated, ...appended];
+        hasChanges = true;
+      }
+
+      // Fallback: If user typed a new message when no items matched
+      if (firstDomMatch === -1 && domItems.length > 0) {
+        const lastDom = domItems[domItems.length - 1];
+        if (!cachedItems.some(c => isMatch(c, lastDom))) {
+          updated = [...cachedItems, lastDom];
+          hasChanges = true;
+        }
+      }
+
+      if (hasChanges) {
         this.cachedChatData.items = updated;
         const chatId = this.getChatId();
         if (chatId) this.saveChatCache(chatId, updated, true);
-        return updated;
       }
 
-      // Check if all domItems are contained within cachedItems
-      const domSet = new Set(domItems.map(d => `${d.type}:${d.rawText}`));
-      const allDomInCache = domItems.every(d => domSet.has(`${d.type}:${d.rawText}`));
-      if (allDomInCache) {
-        return cachedItems.map(c => ({
-          ...c,
-          isOffDOM: !domSet.has(`${c.type}:${c.rawText}`)
-        }));
-      }
-
-      // If user typed a new message while scrolled
-      const lastDom = domItems[domItems.length - 1];
-      if (!cachedItems.some(c => c.type === lastDom.type && c.rawText === lastDom.rawText)) {
-        const updated = [...cachedItems, lastDom];
-        this.cachedChatData.items = updated;
-        const chatId = this.getChatId();
-        if (chatId) this.saveChatCache(chatId, updated, true);
-        return updated;
-      }
-
-      return cachedItems;
+      const domSet = new Set(domItems.map(d => `${d.type}:${d.rawText}:${d.subIndex ?? ''}`));
+      return updated.map(c => ({
+        ...c,
+        isOffDOM: !domSet.has(`${c.type}:${c.rawText}:${c.subIndex ?? ''}`)
+      }));
     }
 
     // If cache is not fully synced, DOM is the authoritative source
