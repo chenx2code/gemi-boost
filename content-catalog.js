@@ -157,28 +157,18 @@ const Catalog = {
     let lastActivityTime = Date.now();
 
     // Set up continuous MutationObserver to detect every incoming batch in real-time
-    const obs = new MutationObserver((mutations) => {
-      let hasAddedNodes = false;
-      for (const m of mutations) {
-        if (m.addedNodes.length > 0) {
-          hasAddedNodes = true;
-          break;
-        }
-      }
-
+    const obs = new MutationObserver(() => {
       const currCount = document.querySelectorAll('user-query').length;
       const currFirstSig = this.getFirstQueryText();
 
-      // Detect either new query count, earliest query change, or newly added DOM nodes in scroller
-      if (currCount > prevCount || (currFirstSig && currFirstSig !== prevFirstSig) || hasAddedNodes) {
-        lastActivityTime = Date.now(); // Reset activity timer because new nodes arrived!
-        if (currCount > prevCount || (currFirstSig && currFirstSig !== prevFirstSig)) {
-          prevCount = currCount;
-          prevFirstSig = currFirstSig;
-          this.updateCatalog();
-          if (syncBtn) {
-            syncBtn.setAttribute('title', `Syncing... (${currCount} items loaded, click to stop)`);
-          }
+      // Only genuine query changes count as activity (prevents virtual scroll re-render from resetting timer)
+      if (currCount > prevCount || (currFirstSig && currFirstSig !== prevFirstSig)) {
+        lastActivityTime = Date.now(); // Reset activity timer because new prompts arrived!
+        prevCount = currCount;
+        prevFirstSig = currFirstSig;
+        this.updateCatalog();
+        if (syncBtn) {
+          syncBtn.setAttribute('title', `Syncing... (${currCount} items loaded, click to stop)`);
         }
       }
     });
@@ -186,10 +176,10 @@ const Catalog = {
     obs.observe(scroller, { childList: true, subtree: true });
 
     // Continuous scroll pulsing loop
-    // Keeps the icon spinning while loading, and stops quickly (1.2s) once all content has settled
+    // Keeps the icon spinning while loading, and stops quickly (1.5s) once all content has settled
     const maxDurationMs = 120000; // 2 minutes safety ceiling
     const startTime = Date.now();
-    const INACTIVITY_TIMEOUT_MS = 1200;
+    const INACTIVITY_TIMEOUT_MS = 1500;
 
     try {
       while (!this.abortSync && (Date.now() - startTime < maxDurationMs)) {
@@ -204,19 +194,13 @@ const Catalog = {
         scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
         scroller.dispatchEvent(new WheelEvent('wheel', { deltaY: -200, bubbles: true }));
 
-        // Detect if content height expanded (signals newly prepended nodes)
-        if (scroller.scrollHeight > prevScrollHeight) {
+        // Detect if content height expanded significantly (e.g. at least 50px of newly prepended content)
+        if (scroller.scrollHeight > prevScrollHeight + 50) {
           prevScrollHeight = scroller.scrollHeight;
           lastActivityTime = Date.now();
         }
 
-        // Detect if Gemini has an active loading spinner or progress bar
-        const hasSpinner = !!document.querySelector('mat-spinner, mat-progress-spinner, [role="progressbar"], .loading-spinner, [class*="loading-indicator"], gem-progress-indicator, .chat-loader');
-        if (hasSpinner) {
-          lastActivityTime = Date.now();
-        }
-
-        // Check if no new nodes, height changes, or spinners have been active for 1.2 seconds
+        // Check if no new prompts or significant height changes have occurred for 1.5 seconds
         if (Date.now() - lastActivityTime > INACTIVITY_TIMEOUT_MS) {
           // Reached the true top of conversation history!
           break;
@@ -227,6 +211,11 @@ const Catalog = {
       }
     } finally {
       obs.disconnect();
+      this.isSyncing = false;
+      this.abortSync = false;
+      if (syncBtn) {
+        syncBtn.classList.remove('is-syncing');
+      }
     }
 
     // Extract the pristine full list directly from the live DOM in top-to-bottom order
@@ -237,10 +226,7 @@ const Catalog = {
     }
     this.updateCatalog();
 
-    this.isSyncing = false;
-    this.abortSync = false;
     if (syncBtn) {
-      syncBtn.classList.remove('is-syncing');
       syncBtn.setAttribute('title', `Synced! (${prevCount} prompts)`);
       setTimeout(() => {
         syncBtn.setAttribute('title', 'Refresh & sync full history');
@@ -619,6 +605,14 @@ const Catalog = {
   },
 
   navigateToItem: function (item) {
+    if (this.isSyncing) {
+      // User clicked a catalog item while sync is running: immediately abort sync loop!
+      this.abortSync = true;
+      this.isSyncing = false;
+      const syncBtn = document.getElementById(this.syncBtnId);
+      if (syncBtn) syncBtn.classList.remove('is-syncing');
+    }
+
     let targetQuery = null;
     if (!item.isOffDOM && typeof item.queryIndex === 'number') {
       const queries = document.querySelectorAll('user-query');
