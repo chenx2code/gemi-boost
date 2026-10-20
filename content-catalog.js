@@ -114,6 +114,13 @@ const Catalog = {
       || document.documentElement;
   },
 
+  getFirstQueryText: function () {
+    const first = document.querySelector('user-query');
+    if (!first) return '';
+    const textNode = first.querySelector('.query-text, p.query-text-line, .query-content') || first;
+    return textNode.textContent.trim().slice(0, 40);
+  },
+
   triggerHistorySync: async function () {
     if (this.isSyncing) {
       // If clicked while already syncing, cancel the ongoing sync loop
@@ -145,53 +152,60 @@ const Catalog = {
     }
 
     let prevCount = document.querySelectorAll('user-query').length;
-    let noNewNodesCount = 0;
-    // Set a high safety cap (100 batches), sufficient to load ~1000 history items
-    const maxLoops = 100;
+    let prevFirstSig = this.getFirstQueryText();
+    let lastActivityTime = Date.now();
 
-    for (let i = 0; i < maxLoops; i++) {
-      if (this.abortSync) break;
-
-      scroller.scrollTop = 0;
-      scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
-
-      // Wait up to 1500ms for Gemini to fetch and mount older history turns
-      await new Promise(resolve => {
-        let timer = null;
-        const obs = new MutationObserver(() => {
-          const curr = document.querySelectorAll('user-query').length;
-          if (curr > prevCount) {
-            clearTimeout(timer);
-            obs.disconnect();
-            resolve(true);
-          }
-        });
-        obs.observe(scroller, { childList: true, subtree: true });
-        timer = setTimeout(() => {
-          obs.disconnect();
-          resolve(false);
-        }, 1500);
-      });
-
-      if (this.abortSync) break;
-
+    // Set up continuous MutationObserver to detect every incoming batch in real-time
+    const obs = new MutationObserver(() => {
       const currCount = document.querySelectorAll('user-query').length;
-      if (currCount > prevCount) {
+      const currFirstSig = this.getFirstQueryText();
+
+      // Detect either new query count or change in the earliest query text (handles virtualized scrolling)
+      if (currCount > prevCount || (currFirstSig && currFirstSig !== prevFirstSig)) {
         prevCount = currCount;
-        noNewNodesCount = 0;
+        prevFirstSig = currFirstSig;
+        lastActivityTime = Date.now(); // Reset activity timer because new nodes arrived!
         this.updateCatalog();
         if (syncBtn) {
           syncBtn.setAttribute('title', `Syncing... (${currCount} items loaded, click to stop)`);
         }
-      } else {
-        noNewNodesCount++;
-        // If consecutive attempts return no new nodes, we have reached the very first prompt
-        if (noNewNodesCount >= 2) {
+      }
+    });
+
+    obs.observe(scroller, { childList: true, subtree: true });
+
+    // Continuous scroll pulsing loop
+    // Keeps the icon spinning continuously until Gemini genuinely stops emitting new nodes for 3.5 continuous seconds
+    const maxDurationMs = 120000; // 2 minutes safety ceiling
+    const startTime = Date.now();
+
+    try {
+      while (!this.abortSync && (Date.now() - startTime < maxDurationMs)) {
+        // Continuously nudge scroll to 0 to maintain top-boundary trigger on Gemini's infinite-scroller
+        if (scroller.scrollTop > 0) {
+          scroller.scrollTop = 0;
+        } else {
+          // Micro-nudge if already at 0 to re-trigger scroll listeners
+          scroller.scrollTop = 25;
+          scroller.scrollTop = 0;
+        }
+        scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+        scroller.dispatchEvent(new WheelEvent('wheel', { deltaY: -200, bubbles: true }));
+
+        // Check if no new nodes or changes have arrived for 3.5 seconds
+        if (Date.now() - lastActivityTime > 3500) {
+          // Reached the true top of conversation history!
           break;
         }
+
+        // Pulse every 350ms
+        await new Promise(r => setTimeout(r, 350));
       }
+    } finally {
+      obs.disconnect();
     }
 
+    // Extract the pristine full list directly from the live DOM in top-to-bottom order
     const fullDomItems = this.extractFromDOM();
     if (chatId && fullDomItems && fullDomItems.length > 0) {
       this.cachedChatData = { items: fullDomItems, isFullySynced: true, updatedAt: Date.now() };
