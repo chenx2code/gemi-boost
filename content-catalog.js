@@ -27,14 +27,26 @@ const Catalog = {
   loadChatCache: function (chatId, callback) {
     if (!chatId) return callback(null);
     const key = `gemiboost_chat_${chatId}`;
+    const handleResult = (cached) => {
+      if (cached) {
+        if (cached.version !== 2) {
+          // Invalidate legacy unversioned cache that may contain corrupted ordering
+          this.clearChatCache(chatId);
+          return callback(null);
+        }
+        return callback(cached);
+      }
+      callback(null);
+    };
+
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
       chrome.storage.local.get([key], (res) => {
-        callback(res ? res[key] : null);
+        handleResult(res ? res[key] : null);
       });
     } else {
       try {
         const raw = localStorage.getItem(key);
-        callback(raw ? JSON.parse(raw) : null);
+        handleResult(raw ? JSON.parse(raw) : null);
       } catch (e) {
         callback(null);
       }
@@ -45,6 +57,7 @@ const Catalog = {
     if (!chatId || !items || items.length === 0) return;
     const key = `gemiboost_chat_${chatId}`;
     const data = {
+      version: 2,
       items: items.map(it => ({
         type: it.type,
         display: it.display,
@@ -66,6 +79,24 @@ const Catalog = {
     }
   },
 
+  clearChatCache: function (chatId, callback) {
+    if (!chatId) {
+      if (callback) callback();
+      return;
+    }
+    const key = `gemiboost_chat_${chatId}`;
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.remove([key], () => {
+        if (callback) callback();
+      });
+    } else {
+      try {
+        localStorage.removeItem(key);
+      } catch (e) {}
+      if (callback) callback();
+    }
+  },
+
   getChatScrollContainer: function () {
     const uq = document.querySelector('user-query');
     if (uq) {
@@ -83,6 +114,13 @@ const Catalog = {
       || document.documentElement;
   },
 
+  getFirstQueryText: function () {
+    const first = document.querySelector('user-query');
+    if (!first) return '';
+    const textNode = first.querySelector('.query-text, p.query-text-line, .query-content') || first;
+    return textNode.textContent.trim().slice(0, 40);
+  },
+
   triggerHistorySync: async function () {
     if (this.isSyncing) {
       // If clicked while already syncing, cancel the ongoing sync loop
@@ -95,73 +133,151 @@ const Catalog = {
 
     this.isSyncing = true;
     this.abortSync = false;
+
+    // CRITICAL: Every refresh is a clean force-refresh!
+    // 1. Reset memory cache and signatures so re-rendering is never blocked
+    this.cachedChatData = null;
+    this.lastSignature = '';
+    this.lastQueryCount = 0;
+
+    // 2. Wipe old persistent cache for this chat immediately
+    if (chatId) {
+      this.clearChatCache(chatId);
+    }
+
     const syncBtn = document.getElementById(this.syncBtnId);
     if (syncBtn) {
+      syncBtn.classList.remove('is-synced');
       syncBtn.classList.add('is-syncing');
-      syncBtn.setAttribute('title', 'Syncing complete history... (Click again to cancel)');
+      syncBtn.innerHTML = `
+        <span class="gemiboost-spinner-composited">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+          </svg>
+        </span>
+      `;
+      syncBtn.setAttribute('title', '正在加载全部历史记录... (再次点击可取消)');
     }
 
     let prevCount = document.querySelectorAll('user-query').length;
-    let noNewNodesCount = 0;
-    // Set a high safety cap (100 batches), sufficient to load ~1000 history items
-    const maxLoops = 100;
+    let prevFirstSig = this.getFirstQueryText();
+    let prevScrollHeight = scroller.scrollHeight;
+    let lastActivityTime = Date.now();
 
-    for (let i = 0; i < maxLoops; i++) {
-      if (this.abortSync) break;
-
-      scroller.scrollTop = 0;
-      scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
-
-      // Wait up to 1500ms for Gemini to fetch and mount older history turns
-      await new Promise(resolve => {
-        let timer = null;
-        const obs = new MutationObserver(() => {
-          const curr = document.querySelectorAll('user-query').length;
-          if (curr > prevCount) {
-            clearTimeout(timer);
-            obs.disconnect();
-            resolve(true);
-          }
-        });
-        obs.observe(scroller, { childList: true, subtree: true });
-        timer = setTimeout(() => {
-          obs.disconnect();
-          resolve(false);
-        }, 1500);
-      });
-
-      if (this.abortSync) break;
-
+    // Set up continuous MutationObserver to detect every incoming batch in real-time
+    const obs = new MutationObserver(() => {
       const currCount = document.querySelectorAll('user-query').length;
-      if (currCount > prevCount) {
+      const currFirstSig = this.getFirstQueryText();
+
+      // Only genuine query changes count as activity (prevents virtual scroll re-render from resetting timer)
+      if (currCount > prevCount || (currFirstSig && currFirstSig !== prevFirstSig)) {
+        lastActivityTime = Date.now(); // Reset activity timer because new prompts arrived!
         prevCount = currCount;
-        noNewNodesCount = 0;
+        prevFirstSig = currFirstSig;
         this.updateCatalog();
-        if (syncBtn) {
-          syncBtn.setAttribute('title', `Syncing... (${currCount} items loaded, click to stop)`);
+
+        // Immediately pin view to the newly arrived earliest prompt
+        const newFirst = document.querySelector('user-query');
+        if (newFirst) {
+          newFirst.scrollIntoView({ block: 'start' });
         }
-      } else {
-        noNewNodesCount++;
-        // If consecutive attempts return no new nodes, we have reached the very first prompt
-        if (noNewNodesCount >= 2) {
-          break;
+
+        if (syncBtn) {
+          syncBtn.setAttribute('title', `正在同步... (已加载 ${currCount} 条，点击可停止)`);
         }
       }
+    });
+
+    obs.observe(scroller, { childList: true, subtree: true });
+
+    // Continuous scroll pulsing loop
+    // Keeps the icon spinning on GPU thread while loading, giving ample retry buffer (4.0s) for server RPCs across all batches
+    const maxDurationMs = 120000; // 2 minutes safety ceiling
+    const startTime = Date.now();
+    const INACTIVITY_TIMEOUT_MS = 4000;
+
+    try {
+      while (!this.abortSync && (Date.now() - startTime < maxDurationMs)) {
+        // 1. Keep view pinned to the earliest loaded prompt (first catalog item position)
+        const firstQuery = document.querySelector('user-query');
+        if (firstQuery) {
+          firstQuery.scrollIntoView({ block: 'start' });
+        }
+
+        // 2. Continuously nudge scroll to 0 with micro-nudge to maintain top-boundary trigger on Gemini CDK scroller
+        if (scroller.scrollTop > 0) {
+          scroller.scrollTop = 0;
+        } else {
+          // Micro-nudge if already at 0 to re-trigger scroll listeners
+          scroller.scrollTop = 25;
+          scroller.scrollTop = 0;
+        }
+        scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+        scroller.dispatchEvent(new WheelEvent('wheel', { deltaY: -200, bubbles: true }));
+
+        // Detect if content height expanded (signals newly prepended historical content)
+        const currentScrollHeight = scroller.scrollHeight;
+        if (currentScrollHeight > prevScrollHeight + 10) {
+          prevScrollHeight = currentScrollHeight;
+          lastActivityTime = Date.now();
+        }
+
+        // Check if waiting for older batches
+        const elapsedSinceActivity = Date.now() - lastActivityTime;
+        if (elapsedSinceActivity > 1500 && syncBtn) {
+          syncBtn.setAttribute('title', `正在同步... (已加载 ${prevCount} 条，正在检查更早的历史...)`);
+        }
+
+        // Check if no new prompts or height changes have occurred for 4.0 seconds while parked at top
+        if (elapsedSinceActivity > INACTIVITY_TIMEOUT_MS) {
+          // Reached the true top of conversation history!
+          break;
+        }
+
+        // Pulse every 250ms
+        await new Promise(r => setTimeout(r, 250));
+      }
+    } finally {
+      obs.disconnect();
+      this.isSyncing = false;
+      this.abortSync = false;
     }
 
+    // Smoothly align viewport to the absolute first prompt at the very top of history
+    const finalFirstQuery = document.querySelector('user-query');
+    if (finalFirstQuery) {
+      finalFirstQuery.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      scroller.scrollTop = 0;
+    }
+
+    // Extract the pristine full list directly from the live DOM in top-to-bottom order
+    const fullDomItems = this.extractFromDOM();
+    if (chatId && fullDomItems && fullDomItems.length > 0) {
+      this.cachedChatData = { items: fullDomItems, isFullySynced: true, updatedAt: Date.now() };
+      this.saveChatCache(chatId, fullDomItems, true);
+    }
     this.updateCatalog();
-    if (chatId && this.lastExtractedData && this.lastExtractedData.length > 0) {
-      this.saveChatCache(chatId, this.lastExtractedData, true);
-    }
 
-    this.isSyncing = false;
-    this.abortSync = false;
     if (syncBtn) {
       syncBtn.classList.remove('is-syncing');
-      syncBtn.setAttribute('title', `Synced! (${prevCount} prompts)`);
+      syncBtn.classList.add('is-synced');
+      syncBtn.innerHTML = `
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+          <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+        </svg>
+      `;
+      syncBtn.setAttribute('title', `已完整同步全部 ${prevCount} 条历史提问`);
+
       setTimeout(() => {
-        syncBtn.setAttribute('title', 'Sync complete history');
-      }, 3000);
+        syncBtn.classList.remove('is-synced');
+        syncBtn.innerHTML = `
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+          </svg>
+        `;
+        syncBtn.setAttribute('title', 'Refresh & sync full history');
+      }, 1200);
     }
   },
 
@@ -209,7 +325,7 @@ const Catalog = {
     header.innerHTML = `
       <div class="gemiboost-toc-title">Table of Contents</div>
       <div class="gemiboost-toc-header-actions">
-        <button id="${this.syncBtnId}" class="gemiboost-toc-sync-btn" title="Sync complete history" aria-label="Sync complete history">
+        <button id="${this.syncBtnId}" class="gemiboost-toc-sync-btn" title="Refresh & sync full history" aria-label="Refresh & sync full history">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
             <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
           </svg>
@@ -448,38 +564,99 @@ const Catalog = {
     if (!cachedItems || cachedItems.length === 0) return domItems;
     if (!domItems || domItems.length === 0) return cachedItems;
 
-    const domFirstRaw = domItems[0]?.rawText;
-    const domFirstDisplay = domItems[0]?.display;
+    const isMatch = (a, b) =>
+      a.type === b.type &&
+      a.rawText === b.rawText &&
+      (a.subIndex === b.subIndex || (a.subIndex === undefined && b.subIndex === undefined));
 
-    let matchIdx = -1;
-    if (domFirstRaw) {
-      matchIdx = cachedItems.findIndex(c => c.rawText === domFirstRaw && c.type === domItems[0].type);
-    }
-    if (matchIdx === -1 && domFirstDisplay) {
-      matchIdx = cachedItems.findIndex(c => c.display === domFirstDisplay && c.type === domItems[0].type);
+    // Validate relative order of cachedItems against domItems
+    // domItems reflects the ground-truth top-to-bottom order from the DOM
+    let lastFoundIndex = -1;
+    let isCorrupted = false;
+
+    for (const d of domItems) {
+      const idx = cachedItems.findIndex(c => isMatch(c, d));
+      if (idx !== -1) {
+        if (idx < lastFoundIndex) {
+          isCorrupted = true;
+          break;
+        }
+        lastFoundIndex = idx;
+      }
     }
 
-    if (matchIdx > 0) {
-      const missingEarlier = cachedItems.slice(0, matchIdx).map(c => ({
+    if (isCorrupted) {
+      console.warn('[GemiBoost] Detected out-of-order cached items. Clearing cache to restore correct DOM order.');
+      const chatId = this.getChatId();
+      if (chatId) this.clearChatCache(chatId);
+      this.cachedChatData = null;
+      return domItems;
+    }
+
+    // Only use cached items if the cache is marked as fully synced
+    if (this.cachedChatData && this.cachedChatData.isFullySynced) {
+      // Find earliest and latest matching indexes in domItems against cachedItems
+      let firstDomMatch = -1;
+      let lastDomMatch = -1;
+
+      for (let i = 0; i < domItems.length; i++) {
+        const d = domItems[i];
+        const inCache = cachedItems.some(c => isMatch(c, d));
+        if (inCache) {
+          if (firstDomMatch === -1) firstDomMatch = i;
+          lastDomMatch = i;
+        }
+      }
+
+      let updated = [...cachedItems];
+      let hasChanges = false;
+
+      // 1. Prepend historical items loaded at the top (e.g. [File] Complete 基金 and earliest prompts)
+      if (firstDomMatch > 0) {
+        const prepended = domItems.slice(0, firstDomMatch);
+        updated = [...prepended, ...updated];
+        hasChanges = true;
+      }
+
+      // 2. Append new user messages sent at the bottom
+      if (lastDomMatch !== -1 && lastDomMatch < domItems.length - 1) {
+        const appended = domItems.slice(lastDomMatch + 1);
+        updated = [...updated, ...appended];
+        hasChanges = true;
+      }
+
+      // Fallback: If user typed a new message when no items matched
+      if (firstDomMatch === -1 && domItems.length > 0) {
+        const lastDom = domItems[domItems.length - 1];
+        if (!cachedItems.some(c => isMatch(c, lastDom))) {
+          updated = [...cachedItems, lastDom];
+          hasChanges = true;
+        }
+      }
+
+      if (hasChanges) {
+        this.cachedChatData.items = updated;
+        const chatId = this.getChatId();
+        if (chatId) this.saveChatCache(chatId, updated, true);
+      }
+
+      const domSet = new Set(domItems.map(d => `${d.type}:${d.rawText}:${d.subIndex ?? ''}`));
+      return updated.map(c => ({
         ...c,
-        isOffDOM: true
+        isOffDOM: !domSet.has(`${c.type}:${c.rawText}:${c.subIndex ?? ''}`)
       }));
-      return [...missingEarlier, ...domItems];
     }
 
-    if (cachedItems.length > domItems.length) {
-      const missingCount = cachedItems.length - domItems.length;
-      const earlier = cachedItems.slice(0, missingCount).map(c => ({
-        ...c,
-        isOffDOM: true
-      }));
-      return [...earlier, ...domItems];
-    }
-
+    // If cache is not fully synced, DOM is the authoritative source
     return domItems;
   },
 
   navigateToItem: function (item) {
+    if (this.isSyncing) {
+      // During sync, ignore catalog clicks to ensure history loads completely to the top without interruption
+      return;
+    }
+
     let targetQuery = null;
     if (!item.isOffDOM && typeof item.queryIndex === 'number') {
       const queries = document.querySelectorAll('user-query');
@@ -592,10 +769,10 @@ const Catalog = {
     this.lastQueryCount = finalItems.length;
     this.lastExtractedData = finalItems;
 
-    // Cache the extracted items for current session
+    // Persist cache updates only if this chat was already fully synced (e.g. appending new user turns)
     const chatId = this.getChatId();
-    if (chatId && domItems.length > 0 && !this.isSyncing) {
-      this.saveChatCache(chatId, finalItems, this.cachedChatData?.isFullySynced || false);
+    if (chatId && this.cachedChatData?.isFullySynced && !this.isSyncing) {
+      this.saveChatCache(chatId, finalItems, true);
     }
 
     const currentScrollTop = list.scrollTop;

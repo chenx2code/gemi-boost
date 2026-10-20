@@ -35,25 +35,31 @@
 
 /* Header */
 .gemiboost-toc-header {
-  padding: 16px 24px;
+  padding: 14px 20px;
   border-bottom: 1px solid #e0e0e0;
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-shrink: 0;
+  gap: 8px;
 }
 
 .gemiboost-toc-title {
   font-weight: 500;
-  font-size: 16px;
+  font-size: 15px;
   color: #1f1f1f;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .gemiboost-toc-header-actions {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-right: -8px;
+  margin-right: -4px;
+  flex-shrink: 0;
 }
 
 .gemiboost-toc-close,
@@ -68,7 +74,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.2s, color 0.2s;
+  font-family: inherit;
+  transition: all 0.25s cubic-bezier(0.2, 0, 0, 1);
+  white-space: nowrap;
 }
 
 .gemiboost-toc-close:hover,
@@ -77,16 +85,64 @@
   color: #1a73e8;
 }
 
-.gemiboost-toc-sync-btn.is-syncing svg {
-  animation: gemiboost-spin 1s linear infinite;
+.gemiboost-toc-close:focus,
+.gemiboost-toc-sync-btn:focus {
+  outline: none;
 }
 
-@keyframes gemiboost-spin {
+.gemiboost-toc-close:focus-visible,
+.gemiboost-toc-sync-btn:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: 1px;
+}
+
+/* State 1: Syncing (Hardware-Accelerated Continuous Spin) */
+.gemiboost-toc-sync-btn.is-syncing {
+  color: #1a73e8;
+  background-color: #e8f0fe;
+  cursor: default;
+}
+
+/* Independent GPU Composited Layer for the spinner */
+.gemiboost-spinner-composited {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  will-change: transform;
+  transform: translateZ(0);
+  animation: gemiboost-compositor-spin 0.85s linear infinite;
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+.gemiboost-spinner-composited svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+/* State 2: Synced Completed (Green Checkmark Feedback) */
+.gemiboost-toc-sync-btn.is-synced {
+  color: #137333;
+  background-color: #e6f4ea;
+  cursor: default;
+}
+
+.gemiboost-toc-sync-btn.is-synced svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+/* Compositor-only rotation animation running on GPU thread */
+@keyframes gemiboost-compositor-spin {
   from {
-    transform: rotate(0deg);
+    transform: rotate(0deg) translateZ(0);
   }
   to {
-    transform: rotate(360deg);
+    transform: rotate(360deg) translateZ(0);
   }
 }
 
