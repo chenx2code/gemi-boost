@@ -176,10 +176,10 @@ const Catalog = {
     obs.observe(scroller, { childList: true, subtree: true });
 
     // Continuous scroll pulsing loop
-    // Keeps the icon spinning while loading, and stops quickly (1.5s) once all content has settled
+    // Keeps the icon spinning while loading, giving ample retry buffer (4.0s) for server RPCs across all batches
     const maxDurationMs = 120000; // 2 minutes safety ceiling
     const startTime = Date.now();
-    const INACTIVITY_TIMEOUT_MS = 1500;
+    const INACTIVITY_TIMEOUT_MS = 4000;
 
     try {
       while (!this.abortSync && (Date.now() - startTime < maxDurationMs)) {
@@ -194,14 +194,20 @@ const Catalog = {
         scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
         scroller.dispatchEvent(new WheelEvent('wheel', { deltaY: -200, bubbles: true }));
 
-        // Detect if content height expanded significantly (e.g. at least 50px of newly prepended content)
-        if (scroller.scrollHeight > prevScrollHeight + 50) {
+        // Detect if content height expanded (signals newly prepended historical content)
+        if (scroller.scrollHeight > prevScrollHeight + 10) {
           prevScrollHeight = scroller.scrollHeight;
           lastActivityTime = Date.now();
         }
 
-        // Check if no new prompts or significant height changes have occurred for 1.5 seconds
-        if (Date.now() - lastActivityTime > INACTIVITY_TIMEOUT_MS) {
+        // Check if waiting for older batches
+        const elapsedSinceActivity = Date.now() - lastActivityTime;
+        if (elapsedSinceActivity > 1500 && syncBtn) {
+          syncBtn.setAttribute('title', `Syncing... (${prevCount} items loaded, checking for older messages...)`);
+        }
+
+        // Check if no new prompts or height changes have occurred for 4.0 seconds
+        if (elapsedSinceActivity > INACTIVITY_TIMEOUT_MS) {
           // Reached the true top of conversation history!
           break;
         }
