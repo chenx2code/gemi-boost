@@ -27,14 +27,26 @@ const Catalog = {
   loadChatCache: function (chatId, callback) {
     if (!chatId) return callback(null);
     const key = `gemiboost_chat_${chatId}`;
+    const handleResult = (cached) => {
+      if (cached) {
+        if (cached.version !== 2) {
+          // Invalidate legacy unversioned cache that may contain corrupted ordering
+          this.clearChatCache(chatId);
+          return callback(null);
+        }
+        return callback(cached);
+      }
+      callback(null);
+    };
+
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
       chrome.storage.local.get([key], (res) => {
-        callback(res ? res[key] : null);
+        handleResult(res ? res[key] : null);
       });
     } else {
       try {
         const raw = localStorage.getItem(key);
-        callback(raw ? JSON.parse(raw) : null);
+        handleResult(raw ? JSON.parse(raw) : null);
       } catch (e) {
         callback(null);
       }
@@ -45,6 +57,7 @@ const Catalog = {
     if (!chatId || !items || items.length === 0) return;
     const key = `gemiboost_chat_${chatId}`;
     const data = {
+      version: 2,
       items: items.map(it => ({
         type: it.type,
         display: it.display,
@@ -63,6 +76,24 @@ const Catalog = {
       try {
         localStorage.setItem(key, JSON.stringify(data));
       } catch (e) {}
+    }
+  },
+
+  clearChatCache: function (chatId, callback) {
+    if (!chatId) {
+      if (callback) callback();
+      return;
+    }
+    const key = `gemiboost_chat_${chatId}`;
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.remove([key], () => {
+        if (callback) callback();
+      });
+    } else {
+      try {
+        localStorage.removeItem(key);
+      } catch (e) {}
+      if (callback) callback();
     }
   },
 
@@ -95,6 +126,9 @@ const Catalog = {
 
     this.isSyncing = true;
     this.abortSync = false;
+    // CRITICAL: Clear cached data before syncing so we build purely from clean live DOM nodes
+    this.cachedChatData = null;
+
     const syncBtn = document.getElementById(this.syncBtnId);
     if (syncBtn) {
       syncBtn.classList.add('is-syncing');
@@ -149,10 +183,12 @@ const Catalog = {
       }
     }
 
-    this.updateCatalog();
-    if (chatId && this.lastExtractedData && this.lastExtractedData.length > 0) {
-      this.saveChatCache(chatId, this.lastExtractedData, true);
+    const fullDomItems = this.extractFromDOM();
+    if (chatId && fullDomItems && fullDomItems.length > 0) {
+      this.cachedChatData = { items: fullDomItems, isFullySynced: true, updatedAt: Date.now() };
+      this.saveChatCache(chatId, fullDomItems, true);
     }
+    this.updateCatalog();
 
     this.isSyncing = false;
     this.abortSync = false;
@@ -160,7 +196,7 @@ const Catalog = {
       syncBtn.classList.remove('is-syncing');
       syncBtn.setAttribute('title', `Synced! (${prevCount} prompts)`);
       setTimeout(() => {
-        syncBtn.setAttribute('title', 'Sync complete history');
+        syncBtn.setAttribute('title', 'Sync complete history (Shift+Click to clear cache)');
       }, 3000);
     }
   },
@@ -209,7 +245,7 @@ const Catalog = {
     header.innerHTML = `
       <div class="gemiboost-toc-title">Table of Contents</div>
       <div class="gemiboost-toc-header-actions">
-        <button id="${this.syncBtnId}" class="gemiboost-toc-sync-btn" title="Sync complete history" aria-label="Sync complete history">
+        <button id="${this.syncBtnId}" class="gemiboost-toc-sync-btn" title="Sync complete history (Shift+Click to clear cache)" aria-label="Sync complete history">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
             <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
           </svg>
@@ -224,7 +260,23 @@ const Catalog = {
     closeBtn.addEventListener('click', () => this.toggleCatalog(false));
 
     const syncBtn = header.querySelector(`#${this.syncBtnId}`);
-    syncBtn.addEventListener('click', () => this.triggerHistorySync());
+    syncBtn.addEventListener('click', (e) => {
+      if (e.shiftKey) {
+        const chatId = this.getChatId();
+        if (chatId) {
+          this.clearChatCache(chatId, () => {
+            this.cachedChatData = null;
+            this.updateCatalog();
+            syncBtn.setAttribute('title', 'Cache cleared!');
+            setTimeout(() => {
+              syncBtn.setAttribute('title', 'Sync complete history (Shift+Click to clear cache)');
+            }, 2500);
+          });
+        }
+        return;
+      }
+      this.triggerHistorySync();
+    });
 
     const list = document.createElement('ul');
     list.id = 'gemiboost-toc-list';
@@ -448,34 +500,69 @@ const Catalog = {
     if (!cachedItems || cachedItems.length === 0) return domItems;
     if (!domItems || domItems.length === 0) return cachedItems;
 
-    const domFirstRaw = domItems[0]?.rawText;
-    const domFirstDisplay = domItems[0]?.display;
+    // Validate relative order of cachedItems against domItems
+    // domItems reflects the ground-truth top-to-bottom order from the DOM
+    let lastFoundIndex = -1;
+    let isCorrupted = false;
 
-    let matchIdx = -1;
-    if (domFirstRaw) {
-      matchIdx = cachedItems.findIndex(c => c.rawText === domFirstRaw && c.type === domItems[0].type);
-    }
-    if (matchIdx === -1 && domFirstDisplay) {
-      matchIdx = cachedItems.findIndex(c => c.display === domFirstDisplay && c.type === domItems[0].type);
-    }
-
-    if (matchIdx > 0) {
-      const missingEarlier = cachedItems.slice(0, matchIdx).map(c => ({
-        ...c,
-        isOffDOM: true
-      }));
-      return [...missingEarlier, ...domItems];
+    for (const d of domItems) {
+      const idx = cachedItems.findIndex(c => c.type === d.type && c.rawText === d.rawText);
+      if (idx !== -1) {
+        if (idx < lastFoundIndex) {
+          isCorrupted = true;
+          break;
+        }
+        lastFoundIndex = idx;
+      }
     }
 
-    if (cachedItems.length > domItems.length) {
-      const missingCount = cachedItems.length - domItems.length;
-      const earlier = cachedItems.slice(0, missingCount).map(c => ({
-        ...c,
-        isOffDOM: true
-      }));
-      return [...earlier, ...domItems];
+    if (isCorrupted) {
+      console.warn('[GemiBoost] Detected out-of-order cached items. Clearing cache to restore correct DOM order.');
+      const chatId = this.getChatId();
+      if (chatId) this.clearChatCache(chatId);
+      this.cachedChatData = null;
+      return domItems;
     }
 
+    // Only use cached items if the cache is marked as fully synced
+    if (this.cachedChatData && this.cachedChatData.isFullySynced) {
+      const lastCached = cachedItems[cachedItems.length - 1];
+      const matchInDomIdx = domItems.findIndex(d => d.type === lastCached.type && d.rawText === lastCached.rawText);
+
+      // Check if user sent new prompts at the bottom after sync
+      if (matchInDomIdx !== -1 && matchInDomIdx < domItems.length - 1) {
+        const newItems = domItems.slice(matchInDomIdx + 1);
+        const updated = [...cachedItems, ...newItems];
+        this.cachedChatData.items = updated;
+        const chatId = this.getChatId();
+        if (chatId) this.saveChatCache(chatId, updated, true);
+        return updated;
+      }
+
+      // Check if all domItems are contained within cachedItems
+      const domSet = new Set(domItems.map(d => `${d.type}:${d.rawText}`));
+      const allDomInCache = domItems.every(d => domSet.has(`${d.type}:${d.rawText}`));
+      if (allDomInCache) {
+        return cachedItems.map(c => ({
+          ...c,
+          isOffDOM: !domSet.has(`${c.type}:${c.rawText}`)
+        }));
+      }
+
+      // If user typed a new message while scrolled
+      const lastDom = domItems[domItems.length - 1];
+      if (!cachedItems.some(c => c.type === lastDom.type && c.rawText === lastDom.rawText)) {
+        const updated = [...cachedItems, lastDom];
+        this.cachedChatData.items = updated;
+        const chatId = this.getChatId();
+        if (chatId) this.saveChatCache(chatId, updated, true);
+        return updated;
+      }
+
+      return cachedItems;
+    }
+
+    // If cache is not fully synced, DOM is the authoritative source
     return domItems;
   },
 
@@ -592,10 +679,10 @@ const Catalog = {
     this.lastQueryCount = finalItems.length;
     this.lastExtractedData = finalItems;
 
-    // Cache the extracted items for current session
+    // Persist cache updates only if this chat was already fully synced (e.g. appending new user turns)
     const chatId = this.getChatId();
-    if (chatId && domItems.length > 0 && !this.isSyncing) {
-      this.saveChatCache(chatId, finalItems, this.cachedChatData?.isFullySynced || false);
+    if (chatId && this.cachedChatData?.isFullySynced && !this.isSyncing) {
+      this.saveChatCache(chatId, finalItems, true);
     }
 
     const currentScrollTop = list.scrollTop;
