@@ -186,10 +186,10 @@ const Catalog = {
     obs.observe(scroller, { childList: true, subtree: true });
 
     // Continuous scroll pulsing loop
-    // Keeps the icon spinning continuously until Gemini genuinely stops emitting new nodes for 5.0 continuous seconds
+    // Keeps the icon spinning while loading, and stops quickly (1.2s) once all content has settled
     const maxDurationMs = 120000; // 2 minutes safety ceiling
     const startTime = Date.now();
-    const INACTIVITY_TIMEOUT_MS = 5000;
+    const INACTIVITY_TIMEOUT_MS = 1200;
 
     try {
       while (!this.abortSync && (Date.now() - startTime < maxDurationMs)) {
@@ -216,14 +216,14 @@ const Catalog = {
           lastActivityTime = Date.now();
         }
 
-        // Check if no new nodes, height changes, or spinners have been active for 5.0 seconds
+        // Check if no new nodes, height changes, or spinners have been active for 1.2 seconds
         if (Date.now() - lastActivityTime > INACTIVITY_TIMEOUT_MS) {
           // Reached the true top of conversation history!
           break;
         }
 
-        // Pulse every 350ms
-        await new Promise(r => setTimeout(r, 350));
+        // Pulse every 250ms
+        await new Promise(r => setTimeout(r, 250));
       }
     } finally {
       obs.disconnect();
