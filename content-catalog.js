@@ -612,11 +612,8 @@ const Catalog = {
 
   navigateToItem: function (item) {
     if (this.isSyncing) {
-      // User clicked a catalog item while sync is running: immediately abort sync loop!
-      this.abortSync = true;
-      this.isSyncing = false;
-      const syncBtn = document.getElementById(this.syncBtnId);
-      if (syncBtn) syncBtn.classList.remove('is-syncing');
+      // During sync, ignore catalog clicks to ensure history loads completely to the top without interruption
+      return;
     }
 
     let targetQuery = null;
