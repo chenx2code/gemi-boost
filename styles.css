@@ -77,6 +77,17 @@
   color: #1a73e8;
 }
 
+.gemiboost-toc-close:focus,
+.gemiboost-toc-sync-btn:focus {
+  outline: none;
+}
+
+.gemiboost-toc-close:focus-visible,
+.gemiboost-toc-sync-btn:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: 1px;
+}
+
 .gemiboost-toc-sync-btn.is-syncing svg {
   animation: gemiboost-spin 1s linear infinite;
 }
