@@ -192,34 +192,8 @@
   font-size: 14px;
 }
 
-/* Toggle Button injected into the page (Fallback Fixed Style) */
-#gemiboost-toc-toggle {
-  position: fixed;
-  top: 10px;
-  right: 150px;
-  z-index: 99998;
-  background: #ffffff;
-  border: 1px solid #dadce0;
-  border-radius: 50%;
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: #5f6368;
-  box-shadow: 0 1px 2px 0 rgba(60,64,67,0.3), 0 1px 3px 1px rgba(60,64,67,0.15);
-  transition: all 0.2s ease, transform 0.3s cubic-bezier(0.2, 0, 0, 1);
-}
-
-#gemiboost-toc-toggle:hover {
-  background: #f8f9fa;
-  color: #1a73e8;
-  box-shadow: 0 1px 3px 0 rgba(60,64,67,0.3), 0 4px 8px 3px rgba(60,64,67,0.15);
-}
-
 /* Toggle Button injected into the Native Toolbar */
-#gemiboost-toc-toggle.gemiboost-native-btn {
+#gemiboost-toc-toggle {
   position: relative;
   top: auto;
   right: auto;
@@ -229,9 +203,16 @@
   width: 40px;
   height: 40px;
   margin-right: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #5f6368;
+  transition: all 0.2s ease;
 }
 
-#gemiboost-toc-toggle.gemiboost-native-btn:hover {
+#gemiboost-toc-toggle:hover {
   background-color: #f1f3f4;
   color: #1a73e8;
   box-shadow: none;
@@ -244,11 +225,6 @@ body top-bar-actions {
 
 body.gemiboost-toc-open top-bar-actions {
   transform: translateX(-288px) !important; /* Move left by the exact width of the TOC */
-}
-
-/* If the fallback fixed button is used (like in new chat), it should also move */
-body.gemiboost-toc-open #gemiboost-toc-toggle:not(.gemiboost-native-btn) {
-  transform: translateX(-288px);
 }
 
 /* Hide the toggle button completely when the TOC is open */

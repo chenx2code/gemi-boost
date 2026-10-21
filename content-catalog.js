@@ -290,6 +290,14 @@ const Catalog = {
       this.createToggleButton();
       this.observeDOM();
 
+      // Retry mounting toggle button quickly as soon as Angular renders top toolbar
+      const retryMountButton = (attempts = 0) => {
+        if (attempts >= 15 || document.getElementById(this.toggleBtnId)) return;
+        this.createToggleButton();
+        setTimeout(() => retryMountButton(attempts + 1), 200);
+      };
+      retryMountButton();
+
       const chatId = this.getChatId();
       if (chatId) {
         this.loadChatCache(chatId, (cached) => {
@@ -364,37 +372,88 @@ const Catalog = {
       return;
     }
 
-    // 1. Primary: Try to find the native three-dot menu button
-    const buttons = document.querySelectorAll('button, [role="button"]');
+    // Check if an existing button was attached to an invalid/off-screen container (e.g. chat messages, mini-app, or body)
+    if (toggleBtn) {
+      const isMisplaced = toggleBtn.parentElement === document.body
+        || toggleBtn.closest('infinite-scroller, user-query, model-response, [class*="mini-app"], .chat-history');
+      const bRect = toggleBtn.getBoundingClientRect();
+      if (isMisplaced || bRect.top < 0 || bRect.top > 100) {
+        toggleBtn.remove();
+        toggleBtn = null;
+      }
+    }
+
+    // 1. Primary: Search for conversation actions button within top bar containers
+    const topBar = document.querySelector('top-bar-actions')
+      || document.querySelector('header')
+      || document.querySelector('[role="banner"]');
+
     let kebabBtn = null;
-    for (let btn of buttons) {
-      const ariaLabel = btn.getAttribute('aria-label') || '';
-      if (ariaLabel.includes("Open menu for conversation actions") ||
-        btn.innerHTML.includes('more_vert')) {
-        const rect = btn.getBoundingClientRect();
-        if (rect.right > window.innerWidth / 2 && rect.top < 100) {
-          kebabBtn = btn;
-          break;
+    if (topBar) {
+      const topBarButtons = topBar.querySelectorAll('button, [role="button"]');
+      for (let btn of topBarButtons) {
+        const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+        if (ariaLabel.includes("conversation") || ariaLabel.includes("actions") || btn.innerHTML.includes('more_vert')) {
+          const rect = btn.getBoundingClientRect();
+          // Must be visible within viewport top bar bounds (y: 0 to 80px)
+          if (rect.top >= 0 && rect.top <= 80) {
+            kebabBtn = btn;
+            break;
+          }
         }
       }
     }
 
-    // 2. If kebab button is found, insert before it
+    // 2. Secondary fallback: Search globally, but strictly exclude message & chat scroll content
+    if (!kebabBtn) {
+      const buttons = document.querySelectorAll('button, [role="button"]');
+      for (let btn of buttons) {
+        // Exclude anything inside chat scroll content, messages, or mini-app widgets
+        if (btn.closest('infinite-scroller, user-query, model-response, [class*="mini-app"], .chat-history')) {
+          continue;
+        }
+
+        const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+        const isActionBtn = ariaLabel.includes("open menu for conversation actions")
+          || (ariaLabel.includes("conversation") && ariaLabel.includes("actions"))
+          || btn.innerHTML.includes('more_vert');
+
+        if (isActionBtn) {
+          const rect = btn.getBoundingClientRect();
+          // Strict bounds check: must be in top toolbar (between 0 and 80px) and on the right side
+          if (rect.top >= 0 && rect.top <= 80 && rect.right > window.innerWidth / 2) {
+            kebabBtn = btn;
+            break;
+          }
+        }
+      }
+    }
+
+    // 3. If kebab button is found, insert before it
     if (kebabBtn) {
-      const targetIconWrapper = kebabBtn.closest('conversation-actions-icon') || kebabBtn.closest('gem-icon-button');
+      const targetIconWrapper = kebabBtn.closest('conversation-actions-icon')
+        || kebabBtn.closest('gem-icon-button')
+        || kebabBtn;
+
       if (targetIconWrapper && targetIconWrapper.parentElement) {
-        if (!toggleBtn) toggleBtn = this.buildButtonElement();
-        if (toggleBtn.parentElement !== targetIconWrapper.parentElement) {
-          toggleBtn.classList.add('gemiboost-native-btn');
-          targetIconWrapper.parentElement.insertBefore(toggleBtn, targetIconWrapper);
+        // Double check targetIconWrapper is not inside chat scroll content
+        if (!targetIconWrapper.closest('infinite-scroller, user-query, model-response, [class*="mini-app"], .chat-history')) {
+          if (!toggleBtn) toggleBtn = this.buildButtonElement();
+          if (toggleBtn.parentElement !== targetIconWrapper.parentElement) {
+            toggleBtn.classList.add('gemiboost-native-btn');
+            targetIconWrapper.parentElement.insertBefore(toggleBtn, targetIconWrapper);
+          }
+          return;
         }
-        return;
       }
     }
 
-    // 3. Secondary: If kebab button not found, insert into top toolbar container
-    const topBarActions = document.querySelector('top-bar-actions .buttons-container') || document.querySelector('top-bar-actions');
-    if (topBarActions) {
+    // 4. If kebab button not found, insert into top toolbar container only if toolbar has rendered buttons
+    const topBarActions = document.querySelector('top-bar-actions .buttons-container')
+      || document.querySelector('top-bar-actions .top-bar-actions')
+      || document.querySelector('top-bar-actions');
+
+    if (topBarActions && topBarActions.querySelectorAll('button, [role="button"]').length > 0) {
       if (!toggleBtn) toggleBtn = this.buildButtonElement();
       if (toggleBtn.parentElement !== topBarActions) {
         toggleBtn.classList.add('gemiboost-native-btn');
@@ -402,11 +461,15 @@ const Catalog = {
       }
       return;
     }
+
+    // If top bar elements have not loaded yet, do not mount prematurely.
+    // MutationObserver and retryMountButton will mount it as soon as the toolbar appears.
   },
 
   buildButtonElement: function () {
     const toggleBtn = document.createElement('button');
     toggleBtn.id = this.toggleBtnId;
+    toggleBtn.classList.add('gemiboost-native-btn');
     toggleBtn.title = 'Toggle Table of Contents';
     toggleBtn.innerHTML = `
       <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
@@ -428,6 +491,12 @@ const Catalog = {
       } else {
         container.classList.remove('panel-visible');
         document.body.classList.remove('gemiboost-toc-open');
+        this.createToggleButton();
+      }
+    } else {
+      if (!show) {
+        document.body.classList.remove('gemiboost-toc-open');
+        this.createToggleButton();
       }
     }
   },
@@ -831,6 +900,7 @@ const Catalog = {
             }
           });
         }
+        this.createToggleButton();
       }
 
       if (!document.getElementById(this.containerId)) {
