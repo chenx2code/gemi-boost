@@ -58,6 +58,7 @@ GemiBoost.Sync = {
     let prevFirstSig = GemiBoost.Utils.getFirstQueryText();
     let prevScrollHeight = scroller.scrollHeight;
     let lastActivityTime = Date.now();
+    let isCheckingEarlierNotified = false;
 
     // Continuous MutationObserver to detect newly prepended batches
     const obs = new MutationObserver(() => {
@@ -72,6 +73,7 @@ GemiBoost.Sync = {
       // Only genuine query changes count as activity
       if (currCount > prevCount || (currFirstSig && currFirstSig !== prevFirstSig)) {
         lastActivityTime = Date.now();
+        isCheckingEarlierNotified = false;
         prevCount = currCount;
         prevFirstSig = currFirstSig;
 
@@ -120,10 +122,12 @@ GemiBoost.Sync = {
         if (currentScrollHeight > prevScrollHeight + 10) {
           prevScrollHeight = currentScrollHeight;
           lastActivityTime = Date.now();
+          isCheckingEarlierNotified = false;
         }
 
         const elapsedSinceActivity = Date.now() - lastActivityTime;
-        if (elapsedSinceActivity > 1500 && GemiBoost.UI) {
+        if (elapsedSinceActivity > 1500 && !isCheckingEarlierNotified && GemiBoost.UI) {
+          isCheckingEarlierNotified = true;
           GemiBoost.UI.setSyncButtonState('syncing', `正在同步... (已加载 ${prevCount} 条，正在检查更早的历史...)`);
         }
 

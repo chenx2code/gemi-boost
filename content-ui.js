@@ -25,7 +25,7 @@ GemiBoost.UI = {
     header.innerHTML = `
       <div class="gemiboost-toc-title">Table of Contents</div>
       <div class="gemiboost-toc-header-actions">
-        <button id="${GemiBoost.Config.DOM_IDS.SYNC_BTN}" class="gemiboost-toc-sync-btn" title="Refresh & sync full history" aria-label="Refresh & sync full history">
+        <button id="${GemiBoost.Config.DOM_IDS.SYNC_BTN}" class="gemiboost-toc-sync-btn" title="Refresh & sync full history" aria-label="Refresh & sync full history" data-state="idle">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
             <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
           </svg>
@@ -197,40 +197,56 @@ GemiBoost.UI = {
     }
   },
 
-  // Update sync button icon and state
+  // Update sync button icon and state without disrupting ongoing CSS animations
   setSyncButtonState: function (state, tooltip) {
     const syncBtn = document.getElementById(GemiBoost.Config.DOM_IDS.SYNC_BTN);
     if (!syncBtn) return;
 
-    if (state === 'syncing') {
-      syncBtn.classList.remove('is-synced');
-      syncBtn.classList.add('is-syncing');
-      syncBtn.innerHTML = `
-        <span class="gemiboost-spinner-composited">
+    const prevState = syncBtn.dataset.state || (
+      syncBtn.classList.contains('is-syncing') ? 'syncing' :
+      syncBtn.classList.contains('is-synced') ? 'synced' : 'idle'
+    );
+    const isStateChanged = prevState !== state;
+
+    if (isStateChanged) {
+      syncBtn.dataset.state = state;
+      if (state === 'syncing') {
+        syncBtn.classList.remove('is-synced');
+        syncBtn.classList.add('is-syncing');
+        syncBtn.innerHTML = `
+          <span class="gemiboost-spinner-composited">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+              <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+            </svg>
+          </span>
+        `;
+      } else if (state === 'synced') {
+        syncBtn.classList.remove('is-syncing');
+        syncBtn.classList.add('is-synced');
+        syncBtn.innerHTML = `
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+          </svg>
+        `;
+      } else {
+        syncBtn.classList.remove('is-syncing', 'is-synced');
+        syncBtn.innerHTML = `
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
             <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
           </svg>
-        </span>
-      `;
-      syncBtn.setAttribute('title', tooltip || '正在加载全部历史记录... (再次点击可取消)');
-    } else if (state === 'synced') {
-      syncBtn.classList.remove('is-syncing');
-      syncBtn.classList.add('is-synced');
-      syncBtn.innerHTML = `
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-          <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-        </svg>
-      `;
-      syncBtn.setAttribute('title', tooltip || '已完整同步全部历史记录');
-    } else {
-      syncBtn.classList.remove('is-syncing', 'is-synced');
-      syncBtn.innerHTML = `
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-          <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
-        </svg>
-      `;
-      syncBtn.setAttribute('title', tooltip || 'Refresh & sync full history');
+        `;
+      }
     }
+
+    const defaultTooltip = state === 'syncing'
+      ? '正在加载全部历史记录... (再次点击可取消)'
+      : state === 'synced'
+      ? '已完整同步全部历史记录'
+      : 'Refresh & sync full history';
+
+    const finalTooltip = tooltip || defaultTooltip;
+    syncBtn.setAttribute('title', finalTooltip);
+    syncBtn.setAttribute('aria-label', finalTooltip);
   },
 
   // Render list of items into TOC list container
