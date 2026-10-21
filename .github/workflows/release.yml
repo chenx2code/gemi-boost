@@ -6,9 +6,13 @@ on:
                   - master
             paths:
                   - "manifest.json"
-                  - "content.js"
+                  - "content-config.js"
                   - "content-utils.js"
-                  - "content-catalog.js"
+                  - "content-storage.js"
+                  - "content-extractor.js"
+                  - "content-sync.js"
+                  - "content-ui.js"
+                  - "content.js"
                   - "styles.css"
                   - "icons/**"
       workflow_dispatch:
@@ -48,11 +52,15 @@ jobs:
                           mkdir -p dist
                           zip -r dist/gemi-boost-v${{ env.VERSION }}.zip \
                             icons \
-                            content.js \
-                            content-utils.js \
-                            content-catalog.js \
+                            manifest.json \
                             styles.css \
-                            manifest.json
+                            content-config.js \
+                            content-utils.js \
+                            content-storage.js \
+                            content-extractor.js \
+                            content-sync.js \
+                            content-ui.js \
+                            content.js
 
                   - name: Generate changelog
                     if: steps.check_tag.outputs.tag_exists == 'false'
