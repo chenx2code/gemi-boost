@@ -4,8 +4,6 @@
   "version": "1.1.2",
   "description": "A powerful table of contents and chat navigator for Google Gemini Web.",
   "permissions": [
-    "activeTab",
-    "scripting",
     "storage"
   ],
   "content_scripts": [
@@ -13,8 +11,12 @@
       "matches": ["https://gemini.google.com/app*"],
       "css": ["styles.css"],
       "js": [
+        "content-config.js",
         "content-utils.js",
-        "content-catalog.js",
+        "content-storage.js",
+        "content-extractor.js",
+        "content-sync.js",
+        "content-ui.js",
         "content.js"
       ],
       "run_at": "document_end"
