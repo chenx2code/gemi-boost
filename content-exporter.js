@@ -132,21 +132,11 @@ GemiBoost.Exporter = {
         });
       } else {
         resolve({
-          includeThought: true,
           includeLink: true,
           includeAccount: false
         });
       }
     });
-  },
-
-  // Strip thought process blockquotes or details as a fallback
-  stripThoughtProcess: function (markdown) {
-    if (!markdown) return '';
-    return markdown
-      .replace(/> \*\*\[(?:思考过程|Thinking Process|Thought Process)\]\*\*[\s\S]*?(?=\n\n[^\>]|\n\n$|$)/gi, '')
-      .replace(/<details[^>]*>[\s\S]*?<\/details>/gi, '')
-      .trim();
   },
 
   // Extract all (user-query, model-response) pairs in chronological order
@@ -164,11 +154,7 @@ GemiBoost.Exporter = {
 
       // 2. Find associated model response
       const modelEl = this.findAssociatedModelResponse(promptEl, index, modelResponses);
-      let modelMarkdown = modelEl ? GemiBoost.Markdown.elementToMarkdown(modelEl, settings) : '';
-
-      if (settings.includeThought === false && modelMarkdown) {
-        modelMarkdown = this.stripThoughtProcess(modelMarkdown);
-      }
+      const modelMarkdown = modelEl ? GemiBoost.Markdown.elementToMarkdown(modelEl) : '';
 
       turns.push({
         turnIndex: index + 1,
