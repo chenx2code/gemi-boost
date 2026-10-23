@@ -60,8 +60,16 @@ GemiBoost.App = {
   createUI: function () {
     GemiBoost.UI.ensureDrawerUI({
       onClose: () => this.toggleCatalog(false),
-      onSync: () => this.handleSync()
+      onSync: () => this.handleSync(),
+      onExport: () => this.handleExport()
     });
+  },
+
+  // Trigger conversation export to Markdown
+  handleExport: function () {
+    if (GemiBoost.Exporter) {
+      GemiBoost.Exporter.exportToMarkdown();
+    }
   },
 
   // Mount or reposition toggle button in top bar

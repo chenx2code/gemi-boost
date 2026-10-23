@@ -63,7 +63,8 @@
 }
 
 .gemiboost-toc-close,
-.gemiboost-toc-sync-btn {
+.gemiboost-toc-sync-btn,
+.gemiboost-toc-export-btn {
   background: transparent;
   border: none;
   cursor: pointer;
@@ -80,24 +81,28 @@
 }
 
 .gemiboost-toc-close:hover,
-.gemiboost-toc-sync-btn:hover {
+.gemiboost-toc-sync-btn:hover,
+.gemiboost-toc-export-btn:hover {
   background-color: #f1f3f4;
   color: #1a73e8;
 }
 
 .gemiboost-toc-close:focus,
-.gemiboost-toc-sync-btn:focus {
+.gemiboost-toc-sync-btn:focus,
+.gemiboost-toc-export-btn:focus {
   outline: none;
 }
 
 .gemiboost-toc-close:focus-visible,
-.gemiboost-toc-sync-btn:focus-visible {
+.gemiboost-toc-sync-btn:focus-visible,
+.gemiboost-toc-export-btn:focus-visible {
   outline: 2px solid #1a73e8;
   outline-offset: 1px;
 }
 
-/* State 1: Syncing (Hardware-Accelerated Continuous Spin) */
-.gemiboost-toc-sync-btn.is-syncing {
+/* State 1: Syncing / Loading (Hardware-Accelerated Continuous Spin) */
+.gemiboost-toc-sync-btn.is-syncing,
+.gemiboost-toc-export-btn.is-loading {
   color: #1a73e8;
   background-color: #e8f0fe;
   cursor: default;
@@ -123,14 +128,16 @@
   display: block;
 }
 
-/* State 2: Synced Completed (Green Checkmark Feedback) */
-.gemiboost-toc-sync-btn.is-synced {
+/* State 2: Synced / Success Completed (Green Checkmark Feedback) */
+.gemiboost-toc-sync-btn.is-synced,
+.gemiboost-toc-export-btn.is-success {
   color: #137333;
   background-color: #e6f4ea;
   cursor: default;
 }
 
-.gemiboost-toc-sync-btn.is-synced svg {
+.gemiboost-toc-sync-btn.is-synced svg,
+.gemiboost-toc-export-btn.is-success svg {
   width: 18px;
   height: 18px;
   display: block;
@@ -190,6 +197,62 @@
   text-align: center;
   color: #5f6368;
   font-size: 14px;
+}
+
+/* Drawer Footer Action Bar */
+.gemiboost-toc-footer {
+  padding: 12px 16px;
+  border-top: 1px solid #e0e0e0;
+  background-color: #fafafa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.gemiboost-toc-footer-btn {
+  width: 100%;
+  height: 38px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid #dadce0;
+  border-radius: 20px;
+  background-color: #ffffff;
+  color: #1a73e8;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.gemiboost-toc-footer-btn:hover {
+  background-color: #f8fafd;
+  border-color: #c2d7fa;
+  color: #174ea6;
+  box-shadow: 0 1px 3px rgba(60, 64, 67, 0.08);
+}
+
+.gemiboost-toc-footer-btn:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: 1px;
+}
+
+.gemiboost-toc-footer-btn.is-loading {
+  background-color: #e8f0fe;
+  border-color: #aecbfa;
+  color: #1a73e8;
+  cursor: default;
+}
+
+.gemiboost-toc-footer-btn.is-success {
+  background-color: #e6f4ea;
+  border-color: #ceead6;
+  color: #137333;
+  cursor: default;
 }
 
 /* Toggle Button injected into the Native Toolbar */

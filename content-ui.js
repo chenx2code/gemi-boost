@@ -6,7 +6,7 @@ window.GemiBoost = window.GemiBoost || {};
 GemiBoost.UI = {
   // Ensure the main TOC sidebar drawer is injected into bard-sidenav-container
   ensureDrawerUI: function (callbacks = {}) {
-    const { onClose, onSync } = callbacks;
+    const { onClose, onSync, onExport } = callbacks;
     const containerId = GemiBoost.Config.DOM_IDS.CONTAINER;
     let container = document.getElementById(containerId);
     if (container) return container;
@@ -25,6 +25,11 @@ GemiBoost.UI = {
     header.innerHTML = `
       <div class="gemiboost-toc-title">Table of Contents</div>
       <div class="gemiboost-toc-header-actions">
+        <button id="${GemiBoost.Config.DOM_IDS.EXPORT_BTN}" class="gemiboost-toc-export-btn" title="Export conversation to Markdown (.md)" aria-label="Export conversation to Markdown (.md)" data-state="idle">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+          </svg>
+        </button>
         <button id="${GemiBoost.Config.DOM_IDS.SYNC_BTN}" class="gemiboost-toc-sync-btn" title="Refresh & sync full history" aria-label="Refresh & sync full history" data-state="idle">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
             <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
@@ -46,11 +51,32 @@ GemiBoost.UI = {
       if (onSync) onSync();
     });
 
+    const exportBtn = header.querySelector(`#${GemiBoost.Config.DOM_IDS.EXPORT_BTN}`);
+    exportBtn.addEventListener('click', () => {
+      if (onExport) onExport();
+    });
+
     const list = document.createElement('ul');
     list.id = GemiBoost.Config.DOM_IDS.LIST;
 
+    const footer = document.createElement('div');
+    footer.className = 'gemiboost-toc-footer';
+    footer.innerHTML = `
+      <button id="${GemiBoost.Config.DOM_IDS.EXPORT_FOOTER_BTN}" class="gemiboost-toc-footer-btn" title="Export conversation to Markdown (.md)">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+          <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+        </svg>
+        <span>Export Chat (.md)</span>
+      </button>
+    `;
+    const exportFooterBtn = footer.querySelector(`#${GemiBoost.Config.DOM_IDS.EXPORT_FOOTER_BTN}`);
+    exportFooterBtn.addEventListener('click', () => {
+      if (onExport) onExport();
+    });
+
     innerWrapper.appendChild(header);
     innerWrapper.appendChild(list);
+    innerWrapper.appendChild(footer);
     container.appendChild(innerWrapper);
 
     mainContainer.appendChild(container);
@@ -247,6 +273,90 @@ GemiBoost.UI = {
     const finalTooltip = tooltip || defaultTooltip;
     syncBtn.setAttribute('title', finalTooltip);
     syncBtn.setAttribute('aria-label', finalTooltip);
+  },
+
+  // Update export button state across top bar and footer
+  setExportButtonState: function (state, tooltip) {
+    const exportBtn = document.getElementById(GemiBoost.Config.DOM_IDS.EXPORT_BTN);
+    const footerBtn = document.getElementById(GemiBoost.Config.DOM_IDS.EXPORT_FOOTER_BTN);
+
+    const defaultTooltip =
+      state === 'syncing'
+        ? '正在同步历史记录以供导出...'
+        : state === 'exporting'
+        ? '正在导出 Markdown 文件...'
+        : state === 'success'
+        ? '导出成功！'
+        : 'Export conversation to Markdown (.md)';
+
+    const finalTooltip = tooltip || defaultTooltip;
+
+    const updateBtn = (btn, isFooter = false) => {
+      if (!btn) return;
+      btn.dataset.state = state;
+
+      if (state === 'syncing' || state === 'exporting') {
+        btn.classList.remove('is-success');
+        btn.classList.add('is-loading');
+        if (isFooter) {
+          btn.innerHTML = `
+            <span class="gemiboost-spinner-composited">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+              </svg>
+            </span>
+            <span>${state === 'syncing' ? '同步中...' : '正在导出...'}</span>
+          `;
+        } else {
+          btn.innerHTML = `
+            <span class="gemiboost-spinner-composited">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+              </svg>
+            </span>
+          `;
+        }
+      } else if (state === 'success') {
+        btn.classList.remove('is-loading');
+        btn.classList.add('is-success');
+        if (isFooter) {
+          btn.innerHTML = `
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+            </svg>
+            <span>导出完成</span>
+          `;
+        } else {
+          btn.innerHTML = `
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+            </svg>
+          `;
+        }
+      } else {
+        btn.classList.remove('is-loading', 'is-success');
+        if (isFooter) {
+          btn.innerHTML = `
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+              <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+            </svg>
+            <span>Export Chat (.md)</span>
+          `;
+        } else {
+          btn.innerHTML = `
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+              <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+            </svg>
+          `;
+        }
+      }
+
+      btn.setAttribute('title', finalTooltip);
+      btn.setAttribute('aria-label', finalTooltip);
+    };
+
+    updateBtn(exportBtn, false);
+    updateBtn(footerBtn, true);
   },
 
   // Render list of items into TOC list container

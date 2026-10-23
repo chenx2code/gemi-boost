@@ -15,7 +15,9 @@
         "content-utils.js",
         "content-storage.js",
         "content-extractor.js",
+        "content-markdown.js",
         "content-sync.js",
+        "content-exporter.js",
         "content-ui.js",
         "content.js"
       ],

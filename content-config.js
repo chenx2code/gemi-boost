@@ -10,7 +10,9 @@ GemiBoost.Config = {
     INNER: 'gemiboost-toc-inner',
     LIST: 'gemiboost-toc-list',
     TOGGLE_BTN: 'gemiboost-toc-toggle',
-    SYNC_BTN: 'gemiboost-toc-sync-btn'
+    SYNC_BTN: 'gemiboost-toc-sync-btn',
+    EXPORT_BTN: 'gemiboost-toc-export-btn',
+    EXPORT_FOOTER_BTN: 'gemiboost-toc-export-footer-btn'
   },
 
   // DOM selectors for Gemini Web UI
@@ -24,6 +26,17 @@ GemiBoost.Config = {
     QUERY_TEXT: '.query-text, p.query-text-line, .query-content',
     HIDDEN_LABEL: '.cdk-visually-hidden, [class*="visually-hidden"]',
     FILE_CONTAINER: '.file-preview-container, [class*="file-preview"]',
+    MODEL_RESPONSE: 'model-response',
+    MESSAGE_CONTENT: 'message-content, .model-response-text, .markdown',
+    THINKING_CONTAINER: 'thinking-process, [data-test-id="thinking-process"], details.thinking-process, .thinking-content',
+    CODE_BLOCK: 'code-block, pre:has(code)',
+    CODE_CONTAINER: '.code-container, pre',
+    CODE_DECORATION: '.code-block-decoration',
+    CODE_LANG: '.code-block-decoration span, [class*="language-"]',
+    MATH_TEX_ANNOTATION: 'annotation[encoding="application/x-tex"]',
+    MATH_DISPLAY: '.katex-display',
+    MATH_INLINE: '.katex:not(.katex-display *)',
+    CHAT_TITLE: 'h1.conversation-title, .conversation-title, [data-test-id="conversation-title"]',
     TOP_BAR_ACTIONS: [
       'top-bar-actions .buttons-container',
       'top-bar-actions .top-bar-actions',
@@ -47,7 +60,8 @@ GemiBoost.Config = {
     NAVIGATE_SCROLL_MAX_ATTEMPTS: 10,
     MOUNT_BUTTON_RETRY_MS: 200,
     MOUNT_BUTTON_MAX_ATTEMPTS: 15,
-    SYNC_ICON_FEEDBACK_MS: 1200
+    SYNC_ICON_FEEDBACK_MS: 1200,
+    EXPORT_FEEDBACK_MS: 1500
   },
 
   // Cache schema version for invalidating stale formats
