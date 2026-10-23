@@ -123,14 +123,15 @@ GemiBoost.Exporter = {
   // Extract all (user-query, model-response) pairs in chronological order
   extractConversationData: function () {
     const title = this.extractChatTitle();
+    const account = this.extractUserAccount();
     const userPrompts = Array.from(document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY));
     const modelResponses = Array.from(document.querySelectorAll(GemiBoost.Config.SELECTORS.MODEL_RESPONSE));
 
     const turns = [];
 
     userPrompts.forEach((promptEl, index) => {
-      // 1. Extract user message
-      const userMessage = this.extractUserMessage(promptEl);
+      // 1. Extract user message and attachments
+      const userTurn = this.extractUserTurn(promptEl);
 
       // 2. Find associated model response
       const modelEl = this.findAssociatedModelResponse(promptEl, index, modelResponses);
@@ -138,7 +139,7 @@ GemiBoost.Exporter = {
 
       turns.push({
         turnIndex: index + 1,
-        user: userMessage,
+        user: userTurn,
         model: modelMarkdown
       });
     });
@@ -146,13 +147,46 @@ GemiBoost.Exporter = {
     return {
       title,
       url: location.href,
+      account,
       exportedAt: new Date(),
       turns
     };
   },
 
-  // Extract user text, images, and attachments from a user-query element
-  extractUserMessage: function (promptEl) {
+  // Extract user Google account email from DOM if available
+  extractUserAccount: function () {
+    try {
+      // 1. Check account / avatar button with aria-label or data attributes
+      const candidates = Array.from(
+        document.querySelectorAll(
+          'button[aria-label*="@"], a[aria-label*="@"], [data-identifier*="@"], [data-email*="@"], [aria-label*="Google 账号"], [aria-label*="Google Account"]'
+        )
+      );
+
+      for (const el of candidates) {
+        const text = `${el.getAttribute('aria-label') || ''} ${el.getAttribute('data-identifier') || ''} ${el.getAttribute('data-email') || ''} ${el.title || ''}`;
+        const match = text.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+        if (match) {
+          return match[1];
+        }
+      }
+
+      // 2. Fallback: inspect user avatar icon image alt or title
+      const userIcons = Array.from(document.querySelectorAll('img.user-icon, [class*="avatar"] img'));
+      for (const img of userIcons) {
+        const match = (img.alt || img.title || '').match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+        if (match) {
+          return match[1];
+        }
+      }
+    } catch (e) {
+      console.warn('[GemiBoost] Could not extract user account:', e);
+    }
+    return '';
+  },
+
+  // Extract structured user turn (text content and attached multimodal files)
+  extractUserTurn: function (promptEl) {
     // A. Text content
     const textNode = promptEl.querySelector(GemiBoost.Config.SELECTORS.QUERY_TEXT) || promptEl;
     let text = textNode.textContent ? textNode.textContent.trim() : '';
@@ -166,43 +200,163 @@ GemiBoost.Exporter = {
       }
     }
 
-    const lines = [];
+    const attachments = [];
 
     // B. Images uploaded by user
     const images = Array.from(promptEl.querySelectorAll('img')).filter((img) => {
-      if (img.classList.contains('user-icon') || (img.src && img.src.includes('googleusercontent.com/a/'))) {
+      if (
+        img.classList.contains('user-icon') ||
+        img.classList.contains('avatar') ||
+        (img.src && (img.src.includes('googleusercontent.com/a/') || img.src.includes('gstatic.com'))) ||
+        img.getAttribute('aria-hidden') === 'true'
+      ) {
         return false;
       }
       const parentFile = img.closest(GemiBoost.Config.SELECTORS.FILE_CONTAINER);
       return !(parentFile && parentFile.textContent && parentFile.textContent.trim());
     });
 
-    images.forEach((img) => {
-      if (img.src) {
-        lines.push(`![User Image](${img.src})`);
-      }
+    images.forEach(() => {
+      attachments.push('[Image]');
     });
 
-    // C. Attached files
-    const files = Array.from(promptEl.querySelectorAll(GemiBoost.Config.SELECTORS.FILE_CONTAINER));
-    files.forEach((file) => {
-      const fileText = file.textContent ? file.textContent.trim() : '';
-      if (fileText) {
-        if (text.includes(fileText)) {
-          text = text.replace(fileText, '').trim();
+    // C. Attached files & documents (strictly match genuine file preview containers)
+    const fileElements = Array.from(
+      promptEl.querySelectorAll(
+        `${GemiBoost.Config.SELECTORS.FILE_CONTAINER}, [data-test-id*="file-preview"], [data-test-id*="attachment"]`
+      )
+    );
+
+    fileElements.forEach((fileEl) => {
+      if (fileEl.closest('.cdk-visually-hidden')) return;
+
+      const fileText = fileEl.textContent ? fileEl.textContent.trim() : '';
+      if (!fileText && !fileEl.querySelector('video, audio')) return;
+
+      const lower = fileText.toLowerCase();
+      const elHtml = fileEl.outerHTML.toLowerCase();
+
+      const isYouTube =
+        lower.includes('youtube') ||
+        elHtml.includes('youtube') ||
+        elHtml.includes('youtu.be') ||
+        /\.(mp4|mov|webm|mkv)($|\s)/i.test(lower);
+      const isAudio =
+        /\.(mp3|wav|m4a|aac|ogg|flac)($|\s)/i.test(lower) ||
+        elHtml.includes('audio') ||
+        fileEl.querySelector('audio');
+      const isPdf = /\.pdf($|\s)/i.test(lower);
+      const isMarkdown = /\.(md|markdown)($|\s)/i.test(lower);
+      const isImageFile = /\.(png|jpe?g|gif|webp|bmp|svg)($|\s)/i.test(lower);
+      const hasFileExtension = /\.[a-zA-Z0-9]{2,5}($|\s)/.test(lower);
+
+      if (isYouTube) {
+        attachments.push('[YouTube Video]');
+      } else if (isAudio) {
+        attachments.push('[Audio File]');
+      } else if (isPdf) {
+        attachments.push('[PDF File]');
+      } else if (isMarkdown) {
+        attachments.push('[Markdown File]');
+      } else if (isImageFile) {
+        if (images.length === 0) {
+          attachments.push('[Image]');
         }
-        const fileLines = fileText.split('\n').map((l) => l.trim()).filter((l) => l);
-        const fileName = fileLines.length > 1 ? fileLines[fileLines.length - 1] : fileLines[0];
-        lines.push(`📎 **[File] ${fileName}**`);
+      } else if (hasFileExtension || fileEl.matches(GemiBoost.Config.SELECTORS.FILE_CONTAINER)) {
+        // Genuine file attachment with a filename or inside a verified file container
+        if (fileText.length > 0 && fileText.length < 150) {
+          attachments.push('[Document]');
+        }
+      }
+
+      if (fileText && text.includes(fileText)) {
+        text = text.replace(fileText, '').trim();
       }
     });
 
-    // D. Main text
+    return {
+      text,
+      attachments
+    };
+  },
+
+  // Backward-compatible string extractor
+  extractUserMessage: function (promptEl) {
+    const turn = this.extractUserTurn(promptEl);
+    const parts = [];
+    if (turn.attachments) parts.push(...turn.attachments.map((a) => `> ${a}`));
+    if (turn.text) parts.push(turn.text);
+    return parts.join('\n\n');
+  },
+
+  // Format user turn according to heading hierarchy and truncation rules
+  formatUserTurn: function (turnIndex, userTurnData, isChinese) {
+    const text = userTurnData && userTurnData.text ? userTurnData.text.trim() : '';
+    const attachments = (userTurnData && userTurnData.attachments) || [];
+
+    const promptLabel = isChinese ? '用户提问' : 'User Prompt';
+    let heading = '';
+    let quoteBlock = '';
+    const attachmentQuotes = [];
+
     if (text) {
-      lines.push(text);
+      const isMultiline = text.includes('\n');
+      if (!isMultiline) {
+        if (text.length <= 200) {
+          // Short prompt (single line & <= 200 chars): direct H2
+          heading = text;
+        } else {
+          // Overlong prompt (single line > 200 chars): truncate to 200 with ...
+          heading = text.substring(0, 200) + '...';
+          quoteBlock =
+            `> **[${promptLabel}]**\n` +
+            text
+              .split('\n')
+              .map((l) => (l.trim() ? `> ${l}` : '>'))
+              .join('\n');
+        }
+      } else {
+        // Multiline prompt: first line as H2, full text in quote block
+        const lines = text.split('\n');
+        let firstLine = lines[0].trim();
+        if (firstLine.length > 200) {
+          heading = firstLine.substring(0, 200) + '...';
+        } else {
+          // Clean up trailing colons on heading line to match standard outline style
+          heading = firstLine.replace(/[:：]$/, '...');
+        }
+        quoteBlock =
+          `> **[${promptLabel}]**\n` +
+          lines.map((l) => (l.trim() ? `> ${l}` : '>')).join('\n');
+      }
+
+      // Attachments follow heading as blockquotes
+      attachments.forEach((att) => {
+        attachmentQuotes.push(`> ${att}`);
+      });
+    } else {
+      if (attachments.length > 0) {
+        // No text, only attachments: first attachment promotes to H2
+        heading = attachments[0];
+        for (let i = 1; i < attachments.length; i++) {
+          attachmentQuotes.push(`> ${attachments[i]}`);
+        }
+      } else {
+        heading = isChinese ? '未命名提问' : 'Untitled Prompt';
+      }
     }
 
-    return lines.join('\n\n');
+    const finalHeading = `## ${heading}`;
+
+    const parts = [finalHeading];
+    if (attachmentQuotes.length > 0) {
+      parts.push(attachmentQuotes.join('\n\n'));
+    }
+    if (quoteBlock) {
+      parts.push(quoteBlock);
+    }
+
+    return parts.join('\n\n');
   },
 
   // Locate the model-response element that corresponds to a user-query
@@ -265,36 +419,91 @@ GemiBoost.Exporter = {
 
   // Assemble full Markdown document with metadata and all turns
   assembleMarkdown: function (conversationData) {
-    const { title, url, exportedAt, turns } = conversationData;
-    const dateStr = exportedAt.toISOString().replace('T', ' ').substring(0, 19);
+    const { title, url, account, turns } = conversationData;
+
+    // Detect environment language (Chinese vs English)
+    const allText = (title || '') + turns.map((t) => (t.user && t.user.text) || '').join('');
+    const isChinese =
+      /[\u4e00-\u9fa5]/.test(allText) ||
+      (document.documentElement.lang && document.documentElement.lang.startsWith('zh'));
 
     const parts = [];
 
-    // Header & Metadata
+    // 1. Single Root Heading (H1)
     parts.push(`# ${title}\n`);
-    parts.push(`> **Export Date**: ${dateStr}  `);
-    parts.push(`> **Chat URL**: [${url}](${url})  `);
-    parts.push(`> **Exported By**: [GemiBoost](https://github.com/chenx2code/gemi-boost)\n`);
-    parts.push('---\n');
 
-    // Dialogue turns
+    // 2. Document Metadata
+    const metaLines = [];
+    if (account) {
+      const accountLabel = isChinese ? '账号' : 'Account';
+      metaLines.push(`> **${accountLabel}:** ${account}`);
+    }
+    if (url) {
+      const linkLabel = isChinese ? '原始对话链接' : 'Original Chat Link';
+      metaLines.push(`> **${linkLabel}:** [${url}](${url})`);
+    }
+
+    if (metaLines.length > 0) {
+      parts.push(metaLines.join('\n'));
+      parts.push('\n---\n');
+    }
+
+    // 3. Conversation Turns
     turns.forEach((turn) => {
-      parts.push(`### 👤 User\n\n${turn.user || '*(Empty prompt)*'}\n`);
-      parts.push(`### 🤖 Gemini\n\n${turn.model || '*(Empty response)*'}\n`);
-      parts.push('---\n');
+      // User turn (H2)
+      const userMarkdown = this.formatUserTurn(turn.turnIndex, turn.user, isChinese);
+      parts.push(userMarkdown);
+
+      // AI response (demoted to H3+)
+      if (turn.model) {
+        const demotedModel = GemiBoost.Markdown.demoteAIHeadings(turn.model);
+        parts.push(demotedModel);
+      } else {
+        parts.push(isChinese ? '*(无回答内容)*' : '*(No response)*');
+      }
+
+      // Turn separator line
+      parts.push('\n---\n');
     });
 
-    return parts.join('\n');
+    return parts.join('\n\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
   },
 
-  // Generate safe filename for the downloaded file without redundant prefix or date suffix
-  generateFilename: function (title) {
-    const safeTitle = (title || 'Conversation')
-      .replace(/[/\\?%*:|"<>]/g, '_')
-      .trim()
-      .substring(0, 100);
+  // Sanitize filename according to cross-platform and length constraints
+  sanitizeFilename: function (title) {
+    const isChinese = typeof title === 'string' && /[\u4e00-\u9fa5]/.test(title);
+    const defaultTitle = isChinese ? '未命名对话' : 'Untitled Conversation';
 
-    return `${safeTitle || 'Conversation'}.md`;
+    let cleanTitle = (title || '').trim();
+    if (!cleanTitle || cleanTitle.toLowerCase() === 'gemini' || cleanTitle === 'Gemini_Conversation') {
+      cleanTitle = defaultTitle;
+    }
+
+    // 1. Cross-platform safe filtering: \ / : * ? " < > | and ASCII control characters (0-31, 127) -> _
+    cleanTitle = cleanTitle.replace(new RegExp('[\\\\/:*?"<>|\\x00-\\x1f\\x7f]', 'g'), '_');
+
+    // 2. Collapse consecutive underscores
+    cleanTitle = cleanTitle.replace(/_+/g, '_');
+
+    // 3. Border handling: strip leading and trailing dots and whitespace
+    cleanTitle = cleanTitle.replace(/^[\s.]+|[\s.]+$/g, '');
+
+    // 4. Max 100 characters truncation
+    if (cleanTitle.length > 100) {
+      cleanTitle = cleanTitle.substring(0, 100);
+      cleanTitle = cleanTitle.replace(/^[\s.]+|[\s.]+$/g, '');
+    }
+
+    if (!cleanTitle) {
+      cleanTitle = defaultTitle;
+    }
+
+    return `${cleanTitle}.md`;
+  },
+
+  // Backward-compatible alias for sanitizeFilename
+  generateFilename: function (title) {
+    return this.sanitizeFilename(title);
   },
 
   // Trigger client-side file download via dynamic Blob URL

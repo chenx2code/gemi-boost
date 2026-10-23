@@ -76,7 +76,11 @@ GemiBoost.Markdown = {
     ) {
       const thinkingContent = this.serializeChildren(el, { ...context, isInsideThinking: true }).trim();
       if (!thinkingContent) return '';
-      return `\n\n<details>\n<summary>💭 思考过程 (Thinking Process)</summary>\n\n${thinkingContent}\n\n</details>\n\n`;
+      const quoted = thinkingContent
+        .split('\n')
+        .map((line) => (line.trim() ? `> ${line}` : '>'))
+        .join('\n');
+      return `\n\n> **[Thought Process]**\n${quoted}\n\n`;
     }
 
     // 5. Code blocks (custom Gemini <code-block> or standard <pre><code>)
@@ -293,5 +297,121 @@ GemiBoost.Markdown = {
       .replace(/\r\n/g, '\n')
       .replace(/\n{3,}/g, '\n\n') // Collapse excessive blank lines
       .trim();
+  },
+
+  // Dynamically shift AI headings down to H3+ and isolate code blocks
+  demoteAIHeadings: function (markdownText) {
+    if (!markdownText) return '';
+
+    const lines = markdownText.split('\n');
+    let inCodeBlock = false;
+    let codeFenceChar = '';
+    let codeFenceLen = 0;
+
+    // Pass 1: Find minimum heading level (L_min) outside code blocks
+    let minLevel = 7;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      const fenceMatch = line.match(/^ {0,3}(`{3,}|~{3,})/);
+      if (fenceMatch) {
+        const matchFence = fenceMatch[1];
+        const matchChar = matchFence[0];
+        const matchLen = matchFence.length;
+
+        if (!inCodeBlock) {
+          inCodeBlock = true;
+          codeFenceChar = matchChar;
+          codeFenceLen = matchLen;
+          continue;
+        } else if (matchChar === codeFenceChar && matchLen >= codeFenceLen) {
+          inCodeBlock = false;
+          codeFenceChar = '';
+          codeFenceLen = 0;
+          continue;
+        }
+      }
+
+      if (inCodeBlock) continue;
+
+      const headingMatch = line.match(/^((?: {0,3}>[ \t]*)*)(#{1,6})[ \t]+(.*)$/);
+      if (headingMatch) {
+        const level = headingMatch[2].length;
+        if (level < minLevel) {
+          minLevel = level;
+        }
+      }
+    }
+
+    // Determine shift amount:
+    // If L_min = 1 (used #), shift +2 (# -> ###, ## -> ####, etc.)
+    // If L_min = 2 (used ##), shift +1 (## -> ###, ### -> ####, etc.)
+    // If L_min >= 3 (used ### or lower, or no headings), shift +0 (keep as-is)
+    let shift = 0;
+    if (minLevel === 1) {
+      shift = 2;
+    } else if (minLevel === 2) {
+      shift = 1;
+    }
+
+    if (shift === 0) {
+      return markdownText;
+    }
+
+    // Pass 2: Apply shift and bold fallback (> 6) outside code blocks
+    inCodeBlock = false;
+    codeFenceChar = '';
+    codeFenceLen = 0;
+    const resultLines = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      const fenceMatch = line.match(/^ {0,3}(`{3,}|~{3,})/);
+      if (fenceMatch) {
+        const matchFence = fenceMatch[1];
+        const matchChar = matchFence[0];
+        const matchLen = matchFence.length;
+
+        if (!inCodeBlock) {
+          inCodeBlock = true;
+          codeFenceChar = matchChar;
+          codeFenceLen = matchLen;
+          resultLines.push(line);
+          continue;
+        } else if (matchChar === codeFenceChar && matchLen >= codeFenceLen) {
+          inCodeBlock = false;
+          codeFenceChar = '';
+          codeFenceLen = 0;
+          resultLines.push(line);
+          continue;
+        }
+      }
+
+      if (inCodeBlock) {
+        resultLines.push(line);
+        continue;
+      }
+
+      const headingMatch = line.match(/^((?: {0,3}>[ \t]*)*)(#{1,6})[ \t]+(.*)$/);
+      if (headingMatch) {
+        const quotePrefix = headingMatch[1];
+        const origLevel = headingMatch[2].length;
+        const titleText = headingMatch[3].trim();
+        const newLevel = origLevel + shift;
+
+        if (newLevel <= 6) {
+          resultLines.push(`${quotePrefix}${'#'.repeat(newLevel)} ${titleText}`);
+        } else {
+          // Bold fallback for headings exceeding level 6 to prevent flattening
+          resultLines.push(`${quotePrefix}**${titleText}**`);
+        }
+      } else {
+        resultLines.push(line);
+      }
+    }
+
+    return resultLines.join('\n');
   }
 };
