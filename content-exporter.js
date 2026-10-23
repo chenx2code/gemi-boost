@@ -87,12 +87,17 @@ GemiBoost.Exporter = {
       // Otherwise, trigger GemiBoost.Sync to scroll up and hydrate full history
       const chatId = GemiBoost.Utils.getChatId();
       GemiBoost.Storage.loadChatCache(chatId, (cached) => {
-        // If already fully synced and we have turns, we can proceed
-        if (cached && cached.isFullySynced) {
+        const domCount = document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY).length;
+        const cachedCount = cached?.items?.length || 0;
+
+        // If the cache was fully synced AND the live DOM actually contains all those turns,
+        // we are already at the complete state and can proceed directly.
+        if (cached && cached.isFullySynced && cachedCount > 0 && domCount >= cachedCount) {
           return resolve();
         }
 
-        // Trigger sync loop
+        // Otherwise (fresh page load or partially loaded), run the full sync loop
+        // which scrolls up to the very first prompt.
         if (GemiBoost.UI) {
           GemiBoost.UI.setExportButtonState('syncing', '正在同步更早的历史记录...');
         }
