@@ -5,14 +5,18 @@ window.GemiBoost = window.GemiBoost || {};
 
 GemiBoost.Markdown = {
   // Convert an HTML element (or tree) into clean, standard Markdown
-  elementToMarkdown: function (rootElement) {
+  elementToMarkdown: function (rootElement, options = {}) {
     if (!rootElement) return '';
 
     // Clone element to safely sanitize and isolate without affecting live DOM
     const clone = rootElement.cloneNode(true);
     this.preprocessElement(clone);
 
-    const rawMarkdown = this.serializeNode(clone);
+    const context = {
+      includeThought: options.includeThought !== false
+    };
+
+    const rawMarkdown = this.serializeNode(clone, context);
     return this.postprocessMarkdown(rawMarkdown);
   },
 
@@ -74,6 +78,9 @@ GemiBoost.Markdown = {
       el.matches?.(GemiBoost.Config.SELECTORS.THINKING_CONTAINER) ||
       el.classList.contains('thinking-content')
     ) {
+      if (context.includeThought === false) {
+        return '';
+      }
       const thinkingContent = this.serializeChildren(el, { ...context, isInsideThinking: true }).trim();
       if (!thinkingContent) return '';
       const quoted = thinkingContent

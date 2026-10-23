@@ -37,8 +37,11 @@ GemiBoost.Exporter = {
       // 1. Ensure conversation is fully loaded from top to bottom
       await this.ensureFullHistoryLoaded();
 
+      // Load user export preferences (from popup switches)
+      const settings = await this.loadExportSettings();
+
       // 2. Extract conversation turns from live DOM
-      const conversationData = this.extractConversationData();
+      const conversationData = this.extractConversationData(settings);
       if (!conversationData || conversationData.turns.length === 0) {
         console.warn('[GemiBoost] No conversation turns found to export.');
         if (GemiBoost.UI) {
@@ -48,7 +51,7 @@ GemiBoost.Exporter = {
       }
 
       // 3. Assemble Markdown document
-      const markdown = this.assembleMarkdown(conversationData);
+      const markdown = this.assembleMarkdown(conversationData, settings);
 
       // 4. Download file
       const filename = this.generateFilename(conversationData.title);
@@ -120,10 +123,36 @@ GemiBoost.Exporter = {
     });
   },
 
+  // Load export settings from storage (async Promise)
+  loadExportSettings: function () {
+    return new Promise((resolve) => {
+      if (GemiBoost.Storage && GemiBoost.Storage.loadExportSettings) {
+        GemiBoost.Storage.loadExportSettings((settings) => {
+          resolve(settings);
+        });
+      } else {
+        resolve({
+          includeThought: true,
+          includeLink: true,
+          includeAccount: false
+        });
+      }
+    });
+  },
+
+  // Strip thought process blockquotes or details as a fallback
+  stripThoughtProcess: function (markdown) {
+    if (!markdown) return '';
+    return markdown
+      .replace(/> \*\*\[(?:思考过程|Thinking Process|Thought Process)\]\*\*[\s\S]*?(?=\n\n[^\>]|\n\n$|$)/gi, '')
+      .replace(/<details[^>]*>[\s\S]*?<\/details>/gi, '')
+      .trim();
+  },
+
   // Extract all (user-query, model-response) pairs in chronological order
-  extractConversationData: function () {
+  extractConversationData: function (settings = {}) {
     const title = this.extractChatTitle();
-    const account = this.extractUserAccount();
+    const account = settings.includeAccount ? this.extractUserAccount() : '';
     const userPrompts = Array.from(document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY));
     const modelResponses = Array.from(document.querySelectorAll(GemiBoost.Config.SELECTORS.MODEL_RESPONSE));
 
@@ -135,7 +164,11 @@ GemiBoost.Exporter = {
 
       // 2. Find associated model response
       const modelEl = this.findAssociatedModelResponse(promptEl, index, modelResponses);
-      const modelMarkdown = modelEl ? GemiBoost.Markdown.elementToMarkdown(modelEl) : '';
+      let modelMarkdown = modelEl ? GemiBoost.Markdown.elementToMarkdown(modelEl, settings) : '';
+
+      if (settings.includeThought === false && modelMarkdown) {
+        modelMarkdown = this.stripThoughtProcess(modelMarkdown);
+      }
 
       turns.push({
         turnIndex: index + 1,
@@ -418,7 +451,7 @@ GemiBoost.Exporter = {
   },
 
   // Assemble full Markdown document with metadata and all turns
-  assembleMarkdown: function (conversationData) {
+  assembleMarkdown: function (conversationData, settings = {}) {
     const { title, url, account, turns } = conversationData;
 
     // Detect environment language (Chinese vs English)
@@ -432,13 +465,13 @@ GemiBoost.Exporter = {
     // 1. Single Root Heading (H1)
     parts.push(`# ${title}\n`);
 
-    // 2. Document Metadata
+    // 2. Document Metadata (based on user settings)
     const metaLines = [];
-    if (account) {
+    if (settings.includeAccount && account) {
       const accountLabel = isChinese ? '账号' : 'Account';
       metaLines.push(`> **${accountLabel}:** ${account}`);
     }
-    if (url) {
+    if (settings.includeLink !== false && url) {
       const linkLabel = isChinese ? '原始对话链接' : 'Original Chat Link';
       metaLines.push(`> **${linkLabel}:** [${url}](${url})`);
     }

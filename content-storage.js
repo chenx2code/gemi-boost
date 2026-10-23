@@ -173,5 +173,47 @@ GemiBoost.Storage = {
 
     // If cache is not fully synced, DOM is the authoritative source
     return { items: domItems, hasChanges: false, isCorrupted: false };
+  },
+
+  // Default export preferences
+  DEFAULT_EXPORT_SETTINGS: {
+    includeThought: true,
+    includeLink: true,
+    includeAccount: false
+  },
+
+  // Load export settings from chrome.storage
+  loadExportSettings: function (callback) {
+    const defaults = this.DEFAULT_EXPORT_SETTINGS;
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      const storage = chrome.storage.sync || chrome.storage.local;
+      storage.get(defaults, (res) => {
+        if (callback) callback(res || defaults);
+      });
+    } else {
+      try {
+        const raw = localStorage.getItem('gemiboost_export_settings');
+        if (callback) callback(raw ? { ...defaults, ...JSON.parse(raw) } : defaults);
+      } catch (e) {
+        if (callback) callback(defaults);
+      }
+    }
+  },
+
+  // Save export settings to chrome.storage
+  saveExportSettings: function (settings, callback) {
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      if (chrome.storage.sync) {
+        chrome.storage.sync.set(settings, callback);
+      }
+      if (chrome.storage.local) {
+        chrome.storage.local.set(settings);
+      }
+    } else {
+      try {
+        localStorage.setItem('gemiboost_export_settings', JSON.stringify(settings));
+      } catch (e) {}
+      if (callback) callback();
+    }
   }
 };
