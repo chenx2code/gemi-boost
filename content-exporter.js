@@ -132,7 +132,7 @@ GemiBoost.Exporter = {
         });
       } else {
         resolve({
-          includeLink: true,
+          includeLink: false,
           includeAccount: false
         });
       }
@@ -457,7 +457,7 @@ GemiBoost.Exporter = {
       const accountLabel = isChinese ? '账号' : 'Account';
       metaLines.push(`> **${accountLabel}:** ${account}`);
     }
-    if (settings.includeLink !== false && url) {
+    if (settings.includeLink && url) {
       const linkLabel = isChinese ? '原始对话链接' : 'Original Chat Link';
       metaLines.push(`> **${linkLabel}:** [${url}](${url})`);
     }

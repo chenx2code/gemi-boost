@@ -177,7 +177,7 @@ GemiBoost.Storage = {
 
   // Default export preferences
   DEFAULT_EXPORT_SETTINGS: {
-    includeLink: true,
+    includeLink: false,
     includeAccount: false
   },
 

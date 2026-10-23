@@ -2,7 +2,7 @@
 // Handles reading and saving GemiBoost export preferences
 
 const DEFAULT_SETTINGS = {
-  includeLink: true,
+  includeLink: false,
   includeAccount: false
 };
 
@@ -18,14 +18,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (storage) {
     storage.get(DEFAULT_SETTINGS, (items) => {
-      linkToggle.checked = items.includeLink !== false;
+      linkToggle.checked = !!items.includeLink;
       accountToggle.checked = !!items.includeAccount;
     });
   } else {
     try {
       const raw = localStorage.getItem('gemiboost_export_settings');
       const items = raw ? JSON.parse(raw) : DEFAULT_SETTINGS;
-      linkToggle.checked = items.includeLink !== false;
+      linkToggle.checked = !!items.includeLink;
       accountToggle.checked = !!items.includeAccount;
     } catch (e) {
       linkToggle.checked = DEFAULT_SETTINGS.includeLink;
