@@ -287,19 +287,14 @@ GemiBoost.Exporter = {
     return parts.join('\n');
   },
 
-  // Generate safe filename for the downloaded file
+  // Generate safe filename for the downloaded file without redundant prefix or date suffix
   generateFilename: function (title) {
-    const safeTitle = (title || 'Gemini_Conversation')
+    const safeTitle = (title || 'Conversation')
       .replace(/[/\\?%*:|"<>]/g, '_')
-      .replace(/\s+/g, '_')
-      .substring(0, 50);
+      .trim()
+      .substring(0, 100);
 
-    const now = new Date();
-    const yyyy = now.getFullYear();
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const dd = String(now.getDate()).padStart(2, '0');
-
-    return `Gemini_${safeTitle}_${yyyy}${mm}${dd}.md`;
+    return `${safeTitle || 'Conversation'}.md`;
   },
 
   // Trigger client-side file download via dynamic Blob URL
