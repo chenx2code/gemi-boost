@@ -103,6 +103,7 @@ GemiBoost.Exporter = {
         }
 
         GemiBoost.Sync.triggerSync({
+          silentUI: true,
           onBatchLoaded: (count) => {
             if (GemiBoost.UI) {
               GemiBoost.UI.setExportButtonState('syncing', `正在加载历史记录 (已加载 ${count} 条)...`);

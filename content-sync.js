@@ -22,14 +22,15 @@ GemiBoost.Sync = {
     this.abortController = null;
     this.activeChatId = null;
 
-    if (GemiBoost.UI) {
+    if (!this.activeSilentUI && GemiBoost.UI) {
       GemiBoost.UI.setSyncButtonState('idle');
     }
+    this.activeSilentUI = false;
   },
 
   // Start the automated scroll-up sync loop to fetch all virtualized history
   triggerSync: async function (callbacks = {}) {
-    const { onBatchLoaded, onComplete, onAborted } = callbacks;
+    const { onBatchLoaded, onComplete, onAborted, silentUI = false } = callbacks;
 
     if (this.isSyncing) {
       // Toggle behavior: clicking while syncing cancels the ongoing loop
@@ -44,13 +45,14 @@ GemiBoost.Sync = {
 
     this.isSyncing = true;
     this.activeChatId = chatId;
+    this.activeSilentUI = !!silentUI;
     this.abortController = new AbortController();
     const signal = this.abortController.signal;
 
     // Reset persistent cache for this chat before force-sync
     GemiBoost.Storage.clearChatCache(chatId);
 
-    if (GemiBoost.UI) {
+    if (!silentUI && GemiBoost.UI) {
       GemiBoost.UI.setSyncButtonState('syncing', '正在加载全部历史记录... (再次点击可取消)');
     }
 
@@ -85,7 +87,7 @@ GemiBoost.Sync = {
           newFirst.scrollIntoView({ block: 'start' });
         }
 
-        if (GemiBoost.UI) {
+        if (!silentUI && GemiBoost.UI) {
           GemiBoost.UI.setSyncButtonState('syncing', `正在同步... (已加载 ${currCount} 条，点击可停止)`);
         }
       }
@@ -126,7 +128,7 @@ GemiBoost.Sync = {
         }
 
         const elapsedSinceActivity = Date.now() - lastActivityTime;
-        if (elapsedSinceActivity > 1500 && !isCheckingEarlierNotified && GemiBoost.UI) {
+        if (!silentUI && elapsedSinceActivity > 1500 && !isCheckingEarlierNotified && GemiBoost.UI) {
           isCheckingEarlierNotified = true;
           GemiBoost.UI.setSyncButtonState('syncing', `正在同步... (已加载 ${prevCount} 条，正在检查更早的历史...)`);
         }
@@ -143,6 +145,7 @@ GemiBoost.Sync = {
       this.isSyncing = false;
       this.abortController = null;
       this.activeChatId = null;
+      this.activeSilentUI = false;
     }
 
     if (signal.aborted) {
@@ -164,7 +167,7 @@ GemiBoost.Sync = {
       GemiBoost.Storage.saveChatCache(chatId, fullDomItems, true);
     }
 
-    if (GemiBoost.UI) {
+    if (!silentUI && GemiBoost.UI) {
       GemiBoost.UI.setSyncButtonState('synced', `已完整同步全部 ${prevCount} 条历史提问`);
       setTimeout(() => {
         GemiBoost.UI.setSyncButtonState('idle');
