@@ -173,5 +173,67 @@ GemiBoost.Storage = {
 
     // If cache is not fully synced, DOM is the authoritative source
     return { items: domItems, hasChanges: false, isCorrupted: false };
+  },
+
+  STORAGE_KEY_SETTINGS: 'gemiboost_export_settings',
+
+  // Default export preferences
+  DEFAULT_EXPORT_SETTINGS: {
+    includeLink: false,
+    includeAccount: false
+  },
+
+  // Load export settings from local cache (chrome.storage.local)
+  loadExportSettings: function (callback) {
+    const defaults = this.DEFAULT_EXPORT_SETTINGS;
+    const key = this.STORAGE_KEY_SETTINGS;
+
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      const storage = chrome.storage.local || chrome.storage.sync;
+      storage.get([key, 'includeLink', 'includeAccount'], (res) => {
+        if (!res) return callback(defaults);
+        if (res[key] && typeof res[key] === 'object') {
+          return callback({ ...defaults, ...res[key] });
+        }
+        const settings = {
+          includeLink: res.includeLink !== undefined ? !!res.includeLink : defaults.includeLink,
+          includeAccount: res.includeAccount !== undefined ? !!res.includeAccount : defaults.includeAccount
+        };
+        callback(settings);
+      });
+    } else {
+      try {
+        const raw = localStorage.getItem(key);
+        callback(raw ? { ...defaults, ...JSON.parse(raw) } : defaults);
+      } catch (e) {
+        callback(defaults);
+      }
+    }
+  },
+
+  // Save export settings to local cache (chrome.storage.local)
+  saveExportSettings: function (settings, callback) {
+    const key = this.STORAGE_KEY_SETTINGS;
+    const toSave = {
+      includeLink: !!settings.includeLink,
+      includeAccount: !!settings.includeAccount
+    };
+
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      const storage = chrome.storage.local || chrome.storage.sync;
+      storage.set({ [key]: toSave, ...toSave }, () => {
+        if (chrome.storage.sync && storage !== chrome.storage.sync) {
+          try {
+            chrome.storage.sync.set({ [key]: toSave, ...toSave });
+          } catch (e) {}
+        }
+        if (callback) callback();
+      });
+    } else {
+      try {
+        localStorage.setItem(key, JSON.stringify(toSave));
+      } catch (e) {}
+      if (callback) callback();
+    }
   }
 };

@@ -6,7 +6,7 @@ window.GemiBoost = window.GemiBoost || {};
 GemiBoost.UI = {
   // Ensure the main TOC sidebar drawer is injected into bard-sidenav-container
   ensureDrawerUI: function (callbacks = {}) {
-    const { onClose, onSync } = callbacks;
+    const { onClose, onSync, onExport } = callbacks;
     const containerId = GemiBoost.Config.DOM_IDS.CONTAINER;
     let container = document.getElementById(containerId);
     if (container) return container;
@@ -25,6 +25,11 @@ GemiBoost.UI = {
     header.innerHTML = `
       <div class="gemiboost-toc-title">Table of Contents</div>
       <div class="gemiboost-toc-header-actions">
+        <button id="${GemiBoost.Config.DOM_IDS.EXPORT_BTN}" class="gemiboost-toc-export-btn" title="Export conversation to Markdown (.md)" aria-label="Export conversation to Markdown (.md)" data-state="idle">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+          </svg>
+        </button>
         <button id="${GemiBoost.Config.DOM_IDS.SYNC_BTN}" class="gemiboost-toc-sync-btn" title="Refresh & sync full history" aria-label="Refresh & sync full history" data-state="idle">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
             <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
@@ -44,6 +49,11 @@ GemiBoost.UI = {
     const syncBtn = header.querySelector(`#${GemiBoost.Config.DOM_IDS.SYNC_BTN}`);
     syncBtn.addEventListener('click', () => {
       if (onSync) onSync();
+    });
+
+    const exportBtn = header.querySelector(`#${GemiBoost.Config.DOM_IDS.EXPORT_BTN}`);
+    exportBtn.addEventListener('click', () => {
+      if (onExport) onExport();
     });
 
     const list = document.createElement('ul');
@@ -247,6 +257,54 @@ GemiBoost.UI = {
     const finalTooltip = tooltip || defaultTooltip;
     syncBtn.setAttribute('title', finalTooltip);
     syncBtn.setAttribute('aria-label', finalTooltip);
+  },
+
+  // Update export button state in top header
+  setExportButtonState: function (state, tooltip) {
+    const exportBtn = document.getElementById(GemiBoost.Config.DOM_IDS.EXPORT_BTN);
+    if (!exportBtn) return;
+
+    const defaultTooltip =
+      state === 'syncing'
+        ? '正在同步历史记录以供导出...'
+        : state === 'exporting'
+        ? '正在导出 Markdown 文件...'
+        : state === 'success'
+        ? '导出成功！'
+        : 'Export conversation to Markdown (.md)';
+
+    const finalTooltip = tooltip || defaultTooltip;
+    exportBtn.dataset.state = state;
+
+    if (state === 'syncing' || state === 'exporting') {
+      exportBtn.classList.remove('is-success');
+      exportBtn.classList.add('is-loading');
+      exportBtn.innerHTML = `
+        <span class="gemiboost-spinner-composited">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <circle cx="12" cy="12" r="9" stroke-dasharray="40 18" />
+          </svg>
+        </span>
+      `;
+    } else if (state === 'success') {
+      exportBtn.classList.remove('is-loading');
+      exportBtn.classList.add('is-success');
+      exportBtn.innerHTML = `
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+          <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+        </svg>
+      `;
+    } else {
+      exportBtn.classList.remove('is-loading', 'is-success');
+      exportBtn.innerHTML = `
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+          <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+        </svg>
+      `;
+    }
+
+    exportBtn.setAttribute('title', finalTooltip);
+    exportBtn.setAttribute('aria-label', finalTooltip);
   },
 
   // Render list of items into TOC list container

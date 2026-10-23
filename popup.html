@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GemiBoost Settings</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="settings-card">
+    <h2 class="settings-title">Settings</h2>
+    <hr class="settings-divider">
+
+    <div class="settings-list">
+      <!-- Toggle 1: Include original conversation link -->
+      <label class="setting-item" for="includeLink">
+        <span class="toggle-switch">
+          <input type="checkbox" id="includeLink">
+          <span class="slider"></span>
+        </span>
+        <span class="setting-label">Include original conversation link</span>
+      </label>
+
+      <!-- Toggle 2: Include account email -->
+      <label class="setting-item" for="includeAccount">
+        <span class="toggle-switch">
+          <input type="checkbox" id="includeAccount">
+          <span class="slider"></span>
+        </span>
+        <span class="setting-label">Include account email</span>
+      </label>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

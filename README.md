@@ -8,6 +8,7 @@ English | [简体中文](./README_zh.md)
 
 - **Dynamic Table of Contents (TOC)**: Automatically generates a sidebar indexing all your questions in a long conversation.
 - **Smooth Navigation**: Click any item in the TOC to instantly scroll to that part of the chat.
+- **Export to Markdown**: Export entire chat conversations into clean, formatted Markdown (`.md`) files with a single click, preserving code blocks, syntax highlighting, LaTeX math formulas, tables, and thinking processes.
 
 ## Installation
 

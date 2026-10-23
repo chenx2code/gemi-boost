@@ -63,7 +63,8 @@
 }
 
 .gemiboost-toc-close,
-.gemiboost-toc-sync-btn {
+.gemiboost-toc-sync-btn,
+.gemiboost-toc-export-btn {
   background: transparent;
   border: none;
   cursor: pointer;
@@ -80,24 +81,28 @@
 }
 
 .gemiboost-toc-close:hover,
-.gemiboost-toc-sync-btn:hover {
+.gemiboost-toc-sync-btn:hover,
+.gemiboost-toc-export-btn:hover {
   background-color: #f1f3f4;
   color: #1a73e8;
 }
 
 .gemiboost-toc-close:focus,
-.gemiboost-toc-sync-btn:focus {
+.gemiboost-toc-sync-btn:focus,
+.gemiboost-toc-export-btn:focus {
   outline: none;
 }
 
 .gemiboost-toc-close:focus-visible,
-.gemiboost-toc-sync-btn:focus-visible {
+.gemiboost-toc-sync-btn:focus-visible,
+.gemiboost-toc-export-btn:focus-visible {
   outline: 2px solid #1a73e8;
   outline-offset: 1px;
 }
 
-/* State 1: Syncing (Hardware-Accelerated Continuous Spin) */
-.gemiboost-toc-sync-btn.is-syncing {
+/* State 1: Syncing / Loading (Hardware-Accelerated Continuous Spin) */
+.gemiboost-toc-sync-btn.is-syncing,
+.gemiboost-toc-export-btn.is-loading {
   color: #1a73e8;
   background-color: #e8f0fe;
   cursor: default;
@@ -123,14 +128,16 @@
   display: block;
 }
 
-/* State 2: Synced Completed (Green Checkmark Feedback) */
-.gemiboost-toc-sync-btn.is-synced {
+/* State 2: Synced / Success Completed (Green Checkmark Feedback) */
+.gemiboost-toc-sync-btn.is-synced,
+.gemiboost-toc-export-btn.is-success {
   color: #137333;
   background-color: #e6f4ea;
   cursor: default;
 }
 
-.gemiboost-toc-sync-btn.is-synced svg {
+.gemiboost-toc-sync-btn.is-synced svg,
+.gemiboost-toc-export-btn.is-success svg {
   width: 18px;
   height: 18px;
   display: block;
