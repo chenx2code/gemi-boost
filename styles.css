@@ -199,62 +199,6 @@
   font-size: 14px;
 }
 
-/* Drawer Footer Action Bar */
-.gemiboost-toc-footer {
-  padding: 12px 16px;
-  border-top: 1px solid #e0e0e0;
-  background-color: #fafafa;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.gemiboost-toc-footer-btn {
-  width: 100%;
-  height: 38px;
-  padding: 0 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border: 1px solid #dadce0;
-  border-radius: 20px;
-  background-color: #ffffff;
-  color: #1a73e8;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  font-family: inherit;
-  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
-}
-
-.gemiboost-toc-footer-btn:hover {
-  background-color: #f8fafd;
-  border-color: #c2d7fa;
-  color: #174ea6;
-  box-shadow: 0 1px 3px rgba(60, 64, 67, 0.08);
-}
-
-.gemiboost-toc-footer-btn:focus-visible {
-  outline: 2px solid #1a73e8;
-  outline-offset: 1px;
-}
-
-.gemiboost-toc-footer-btn.is-loading {
-  background-color: #e8f0fe;
-  border-color: #aecbfa;
-  color: #1a73e8;
-  cursor: default;
-}
-
-.gemiboost-toc-footer-btn.is-success {
-  background-color: #e6f4ea;
-  border-color: #ceead6;
-  color: #137333;
-  cursor: default;
-}
-
 /* Toggle Button injected into the Native Toolbar */
 #gemiboost-toc-toggle {
   position: relative;

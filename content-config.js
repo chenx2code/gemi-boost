@@ -11,8 +11,7 @@ GemiBoost.Config = {
     LIST: 'gemiboost-toc-list',
     TOGGLE_BTN: 'gemiboost-toc-toggle',
     SYNC_BTN: 'gemiboost-toc-sync-btn',
-    EXPORT_BTN: 'gemiboost-toc-export-btn',
-    EXPORT_FOOTER_BTN: 'gemiboost-toc-export-footer-btn'
+    EXPORT_BTN: 'gemiboost-toc-export-btn'
   },
 
   // DOM selectors for Gemini Web UI
