@@ -175,42 +175,63 @@ GemiBoost.Storage = {
     return { items: domItems, hasChanges: false, isCorrupted: false };
   },
 
+  STORAGE_KEY_SETTINGS: 'gemiboost_export_settings',
+
   // Default export preferences
   DEFAULT_EXPORT_SETTINGS: {
     includeLink: false,
     includeAccount: false
   },
 
-  // Load export settings from chrome.storage
+  // Load export settings from local cache (chrome.storage.local)
   loadExportSettings: function (callback) {
     const defaults = this.DEFAULT_EXPORT_SETTINGS;
+    const key = this.STORAGE_KEY_SETTINGS;
+
     if (typeof chrome !== 'undefined' && chrome.storage) {
-      const storage = chrome.storage.sync || chrome.storage.local;
-      storage.get(defaults, (res) => {
-        if (callback) callback(res || defaults);
+      const storage = chrome.storage.local || chrome.storage.sync;
+      storage.get([key, 'includeLink', 'includeAccount'], (res) => {
+        if (!res) return callback(defaults);
+        if (res[key] && typeof res[key] === 'object') {
+          return callback({ ...defaults, ...res[key] });
+        }
+        const settings = {
+          includeLink: res.includeLink !== undefined ? !!res.includeLink : defaults.includeLink,
+          includeAccount: res.includeAccount !== undefined ? !!res.includeAccount : defaults.includeAccount
+        };
+        callback(settings);
       });
     } else {
       try {
-        const raw = localStorage.getItem('gemiboost_export_settings');
-        if (callback) callback(raw ? { ...defaults, ...JSON.parse(raw) } : defaults);
+        const raw = localStorage.getItem(key);
+        callback(raw ? { ...defaults, ...JSON.parse(raw) } : defaults);
       } catch (e) {
-        if (callback) callback(defaults);
+        callback(defaults);
       }
     }
   },
 
-  // Save export settings to chrome.storage
+  // Save export settings to local cache (chrome.storage.local)
   saveExportSettings: function (settings, callback) {
+    const key = this.STORAGE_KEY_SETTINGS;
+    const toSave = {
+      includeLink: !!settings.includeLink,
+      includeAccount: !!settings.includeAccount
+    };
+
     if (typeof chrome !== 'undefined' && chrome.storage) {
-      if (chrome.storage.sync) {
-        chrome.storage.sync.set(settings, callback);
-      }
-      if (chrome.storage.local) {
-        chrome.storage.local.set(settings);
-      }
+      const storage = chrome.storage.local || chrome.storage.sync;
+      storage.set({ [key]: toSave, ...toSave }, () => {
+        if (chrome.storage.sync && storage !== chrome.storage.sync) {
+          try {
+            chrome.storage.sync.set({ [key]: toSave, ...toSave });
+          } catch (e) {}
+        }
+        if (callback) callback();
+      });
     } else {
       try {
-        localStorage.setItem('gemiboost_export_settings', JSON.stringify(settings));
+        localStorage.setItem(key, JSON.stringify(toSave));
       } catch (e) {}
       if (callback) callback();
     }
