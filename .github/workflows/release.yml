@@ -10,9 +10,14 @@ on:
                   - "content-utils.js"
                   - "content-storage.js"
                   - "content-extractor.js"
+                  - "content-markdown.js"
                   - "content-sync.js"
+                  - "content-exporter.js"
                   - "content-ui.js"
                   - "content.js"
+                  - "popup.html"
+                  - "popup.css"
+                  - "popup.js"
                   - "styles.css"
                   - "icons/**"
       workflow_dispatch:
@@ -58,9 +63,14 @@ jobs:
                             content-utils.js \
                             content-storage.js \
                             content-extractor.js \
+                            content-markdown.js \
                             content-sync.js \
+                            content-exporter.js \
                             content-ui.js \
-                            content.js
+                            content.js \
+                            popup.html \
+                            popup.css \
+                            popup.js
 
                   - name: Generate changelog
                     if: steps.check_tag.outputs.tag_exists == 'false'
