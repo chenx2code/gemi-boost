@@ -64,5 +64,14 @@ GemiBoost.Config = {
   },
 
   // Cache schema version for invalidating stale formats
-  CACHE_VERSION: 2
+  CACHE_VERSION: 2,
+
+  // User configurable preferences and storage keys
+  SETTINGS: {
+    STORAGE_KEY: 'gemiboost_export_settings',
+    DEFAULTS: {
+      includeLink: false,
+      includeAccount: false
+    }
+  }
 };

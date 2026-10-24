@@ -1,8 +1,9 @@
 // popup.js
 // Handles reading and saving GemiBoost export preferences
 
-const STORAGE_KEY = 'gemiboost_export_settings';
-const DEFAULT_SETTINGS = {
+const CONFIG_SETTINGS = window.GemiBoost?.Config?.SETTINGS;
+const STORAGE_KEY = CONFIG_SETTINGS?.STORAGE_KEY || 'gemiboost_export_settings';
+const DEFAULT_SETTINGS = CONFIG_SETTINGS?.DEFAULTS || {
   includeLink: false,
   includeAccount: false
 };
