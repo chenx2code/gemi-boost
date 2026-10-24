@@ -175,13 +175,10 @@ GemiBoost.Storage = {
     return { items: domItems, hasChanges: false, isCorrupted: false };
   },
 
-  STORAGE_KEY_SETTINGS: 'gemiboost_export_settings',
+  STORAGE_KEY_SETTINGS: GemiBoost.Config.SETTINGS.STORAGE_KEY,
 
   // Default export preferences
-  DEFAULT_EXPORT_SETTINGS: {
-    includeLink: false,
-    includeAccount: false
-  },
+  DEFAULT_EXPORT_SETTINGS: GemiBoost.Config.SETTINGS.DEFAULTS,
 
   // Load export settings from local cache (chrome.storage.local)
   loadExportSettings: function (callback) {
