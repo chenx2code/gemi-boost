@@ -5,7 +5,7 @@
   --gb-font-family: 'Google Sans', 'Google Sans Text', Roboto, 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
 
   /* Light Theme (Material Design 3 / Gemini UI) */
-  --gb-container-bg: #f8fafd;
+  --gb-container-bg: #ffffff;
   --gb-header-bg: #ffffff;
   --gb-border: #e2e7ee;
   --gb-divider: #edf1f7;
@@ -16,9 +16,9 @@
   --gb-primary-hover: #0842a0;
   --gb-primary-container: #d3e3fd;
   --gb-on-primary-container: #041e49;
-  --gb-badge-bg: #e9eef6;
+  --gb-badge-bg: #f4f6f8;
   --gb-badge-text: #444746;
-  --gb-badge-active-bg: #d3e3fd;
+  --gb-badge-active-bg: #e2edfd;
   --gb-badge-active-text: #041e49;
   --gb-item-hover: #edf2f9;
   --gb-item-active-bg: #edf4fe;
