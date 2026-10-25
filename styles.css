@@ -313,18 +313,28 @@ body[data-theme="dark"],
   color: var(--gb-text-primary);
   cursor: pointer;
   position: relative;
-  transition: background-color 0.18s cubic-bezier(0.2, 0, 0, 1), color 0.18s ease;
+  transition: background-color 0.35s cubic-bezier(0.2, 0, 0, 1), color 0.18s ease;
 }
 
 .gemiboost-toc-item:hover {
   background-color: var(--gb-item-hover);
 }
 
-/* Active State */
+/* Active State - Minimalist position indicator (badge indicates position) */
 .gemiboost-toc-item.is-active {
-  background-color: var(--gb-item-active-bg);
-  color: var(--gb-item-active-text);
+  background-color: transparent;
+  color: var(--gb-text-primary);
   font-weight: 500;
+}
+
+.gemiboost-toc-item.is-active:hover {
+  background-color: var(--gb-item-hover);
+}
+
+/* Temporary highlight during click navigation */
+.gemiboost-toc-item.is-navigating {
+  background-color: var(--gb-item-active-bg);
+  transition: none; /* Instant feedback on click, smooth fade on removal */
 }
 
 /* Leading badge and icons */
@@ -400,6 +410,14 @@ body[data-theme="dark"],
 .gemiboost-icon-file {
   background-color: var(--gb-icon-file-bg);
   color: var(--gb-icon-file-color);
+}
+
+/* Sub-item attachment icons inherit active badge styling */
+.gemiboost-toc-item.is-active .gemiboost-icon-image,
+.gemiboost-toc-item.is-active .gemiboost-icon-file {
+  background-color: var(--gb-badge-active-bg);
+  color: var(--gb-badge-active-text);
+  transition: background-color 0.18s ease, color 0.18s ease;
 }
 
 /* Text Content Area */

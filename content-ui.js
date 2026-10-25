@@ -543,10 +543,10 @@ GemiBoost.UI = {
       li.appendChild(content);
 
       li.addEventListener('click', () => {
-        // Highlight active item
+        // Highlight active item and indicate navigating flight
         const allItems = list.querySelectorAll('.gemiboost-toc-item');
-        allItems.forEach((el) => el.classList.remove('is-active'));
-        li.classList.add('is-active');
+        allItems.forEach((el) => el.classList.remove('is-active', 'is-navigating'));
+        li.classList.add('is-active', 'is-navigating');
 
         if (onItemClick) onItemClick(item);
       });
@@ -728,12 +728,20 @@ GemiBoost.UI = {
         const matchesQuery = String(item.queryIndex) === el.dataset.queryIndex;
         const matchesSub = item.subIndex === undefined || String(item.subIndex) === el.dataset.subIndex;
         if (matchesQuery && matchesSub) {
-          el.classList.add('is-active');
+          el.classList.add('is-active', 'is-navigating');
         } else {
-          el.classList.remove('is-active');
+          el.classList.remove('is-active', 'is-navigating');
         }
       });
     }
+
+    // Helper to fade away temporary navigation row background
+    const clearNavigatingState = () => {
+      if (list) {
+        const navItems = list.querySelectorAll('.gemiboost-toc-item.is-navigating');
+        navItems.forEach((el) => el.classList.remove('is-navigating'));
+      }
+    };
 
     // 3. User manual interrupt handler (mouse wheel, touch or keydown gracefully abort auto-navigation)
     const onUserInterrupt = (e) => {
@@ -744,6 +752,7 @@ GemiBoost.UI = {
     };
 
     const cleanup = () => {
+      clearNavigatingState();
       if (this._cancelAnimation) {
         this._cancelAnimation();
         this._cancelAnimation = null;
@@ -780,6 +789,9 @@ GemiBoost.UI = {
       const duration = Math.min(520, Math.max(260, Math.round(200 + Math.sqrt(distance) * 4.2)));
 
       this._cancelAnimation = this.animateScrollTo(scroller, targetScrollTop, duration, () => {
+        // Clear navigating state so row background gently fades away upon arrival
+        clearNavigatingState();
+
         // Arrival check: micro-settle if layout shifted during flight
         const freshTarget = this.findTargetElement(item) || targetEl;
         const freshTargetRect = freshTarget.getBoundingClientRect();
