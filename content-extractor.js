@@ -6,6 +6,9 @@ window.GemiBoost = window.GemiBoost || {};
 GemiBoost.Extractor = {
   // Extract and clean raw prompt text from a query DOM node, stripping hidden screen reader labels
   getCleanPromptText: function (promptEl) {
+    if (GemiBoost.Utils && GemiBoost.Utils.getCleanPromptText) {
+      return GemiBoost.Utils.getCleanPromptText(promptEl);
+    }
     if (!promptEl) return '';
     const textNode = promptEl.querySelector(GemiBoost.Config.SELECTORS.QUERY_TEXT) || promptEl;
     let text = textNode.textContent ? textNode.textContent.trim() : '';
@@ -296,18 +299,7 @@ GemiBoost.Extractor = {
   // Extract structured user turn (text content and attached multimodal files)
   extractUserTurn: function (promptEl) {
     // A. Text content
-    const textNode = promptEl.querySelector(GemiBoost.Config.SELECTORS.QUERY_TEXT) || promptEl;
-    let text = textNode.textContent ? textNode.textContent.trim() : '';
-
-    // Strip hidden screen-reader labels ("You said ", "你说了 ")
-    const hiddenLabel = promptEl.querySelector(GemiBoost.Config.SELECTORS.HIDDEN_LABEL);
-    if (hiddenLabel && hiddenLabel.textContent) {
-      const hiddenText = hiddenLabel.textContent.trim();
-      if (text.startsWith(hiddenText)) {
-        text = text.substring(hiddenText.length).trim();
-      }
-    }
-
+    let text = this.getCleanPromptText(promptEl);
     const attachments = [];
 
     // B. Images uploaded by user
@@ -356,6 +348,11 @@ GemiBoost.Extractor = {
       const isPdf = /\.pdf($|\s)/i.test(lower);
       const isMarkdown = /\.(md|markdown)($|\s)/i.test(lower);
       const isImageFile = /\.(png|jpe?g|gif|webp|bmp|svg)($|\s)/i.test(lower);
+      const isFolder =
+        (fileEl.querySelector('mat-icon') && fileEl.querySelector('mat-icon').textContent.trim().toLowerCase().includes('folder')) ||
+        fileEl.querySelector('[aria-label*="folder" i]') !== null ||
+        fileEl.querySelector('[class*="folder"]') !== null ||
+        fileEl.querySelector('img[alt*="folder" i]') !== null;
       const hasFileExtension = /\.[a-zA-Z0-9]{2,5}($|\s)/.test(lower);
 
       if (isYouTube) {
@@ -366,6 +363,9 @@ GemiBoost.Extractor = {
         attachments.push('[PDF File]');
       } else if (isMarkdown) {
         attachments.push('[Markdown File]');
+      } else if (isFolder) {
+        const folderName = fileText.split('\n').map((l) => l.trim()).filter((l) => l).pop() || 'Folder';
+        attachments.push(`[Folder] ${folderName}`);
       } else if (isImageFile) {
         if (images.length === 0) {
           attachments.push('[Image]');
