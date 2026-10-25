@@ -42,8 +42,9 @@ const I18N_UI = {
 };
 
 GemiBoost.UI = {
+  _items: [],
   _scrollSpyBound: false,
-  _navController: null,
+  _cancelAnimation: null,
   _isNavigating: false,
 
   // Get current active language strings
@@ -285,7 +286,7 @@ GemiBoost.UI = {
     this._scrollSpyBound = true;
     const onScroll = GemiBoost.Utils.debounce(() => {
       this.updateActiveItem();
-    }, 100);
+    }, 150);
 
     scroller.addEventListener('scroll', onScroll, { passive: true });
   },
@@ -320,6 +321,11 @@ GemiBoost.UI = {
 
     const list = document.getElementById(GemiBoost.Config.DOM_IDS.LIST);
     if (!list) return;
+
+    const currentActive = list.querySelector('.gemiboost-toc-item.is-active');
+    if (currentActive && parseInt(currentActive.dataset.queryIndex, 10) === activeIndex) {
+      return; // Already active, zero DOM touch
+    }
 
     const items = list.querySelectorAll('.gemiboost-toc-item');
     items.forEach((li) => {
@@ -436,6 +442,7 @@ GemiBoost.UI = {
 
   // Render list of items into TOC list container
   renderList: function (items, onItemClick) {
+    this._items = items || [];
     const list = document.getElementById(GemiBoost.Config.DOM_IDS.LIST);
     if (!list) return;
 
@@ -555,14 +562,27 @@ GemiBoost.UI = {
     if (!queryEl) return -1;
     const textNode = queryEl.querySelector(GemiBoost.Config.SELECTORS.QUERY_TEXT) || queryEl;
     const qText = textNode.textContent ? textNode.textContent.trim() : '';
+    if (!qText) return -1;
 
+    // 1. Fast in-memory lookup via cached items (avoids DOM traversals)
+    if (this._items && this._items.length > 0) {
+      const qPrefix = qText.slice(0, 20);
+      for (const item of this._items) {
+        const itemText = item.rawText || item.title || item.display || '';
+        if (itemText && (qText.includes(itemText.slice(0, 20)) || itemText.includes(qPrefix))) {
+          if (typeof item.queryIndex === 'number') return item.queryIndex;
+        }
+      }
+    }
+
+    // 2. Fallback to DOM if in-memory cache misses
     const list = document.getElementById(GemiBoost.Config.DOM_IDS.LIST);
     if (!list) return -1;
 
     const items = list.querySelectorAll('.gemiboost-toc-item');
     for (const li of items) {
-      const title = li.title || li.textContent;
-      if (qText && title && (qText.includes(title.slice(0, 20)) || title.includes(qText.slice(0, 20)))) {
+      const title = li.title || '';
+      if (title && (qText.includes(title.slice(0, 20)) || title.includes(qText.slice(0, 20)))) {
         const idx = parseInt(li.dataset.queryIndex, 10);
         if (!isNaN(idx)) return idx;
       }
@@ -635,7 +655,55 @@ GemiBoost.UI = {
     }, 1600);
   },
 
-  // Active progressive auto-navigation controller: reliably cruises to any distance in a single click
+  // Hardware-synchronized 60fps/120fps ease-out cubic scroll animation
+  animateScrollTo: function (scroller, targetTop, duration, onComplete) {
+    if (!scroller) return () => {};
+
+    const maxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+    const boundedTarget = Math.max(0, Math.min(maxScroll, Math.round(targetTop)));
+    const startTop = scroller.scrollTop;
+    const distance = boundedTarget - startTop;
+
+    if (Math.abs(distance) < 2) {
+      scroller.scrollTop = boundedTarget;
+      if (onComplete) onComplete();
+      return () => {};
+    }
+
+    const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+    const startTime = performance.now();
+    let rafId = null;
+    let isCanceled = false;
+
+    const tick = (currentTime) => {
+      if (isCanceled) return;
+
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(1, elapsed / duration);
+      const easedProgress = easeOutCubic(progress);
+
+      scroller.scrollTop = Math.round(startTop + distance * easedProgress);
+
+      if (progress < 1) {
+        rafId = requestAnimationFrame(tick);
+      } else {
+        scroller.scrollTop = boundedTarget;
+        if (onComplete) onComplete();
+      }
+    };
+
+    rafId = requestAnimationFrame(tick);
+
+    return () => {
+      isCanceled = true;
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+    };
+  },
+
+  // Silky 60fps/120fps progressive auto-navigation controller: cruises to any distance in a single click
   navigateToItem: function (item, onUpdateCatalog) {
     if (GemiBoost.Sync && GemiBoost.Sync.isCurrentlySyncing()) {
       return;
@@ -644,16 +712,15 @@ GemiBoost.UI = {
     const scroller = GemiBoost.Utils.getChatScrollContainer();
     if (!scroller) return;
 
-    // Cancel any previous in-flight navigation loop
-    if (this._navController) {
-      this._navController.abort();
+    // 1. Cancel any active animation and reset previous navigation state
+    if (this._cancelAnimation) {
+      this._cancelAnimation();
+      this._cancelAnimation = null;
     }
 
-    const ac = new AbortController();
-    this._navController = ac;
     this._isNavigating = true;
 
-    // Update active highlight in the sidebar list immediately
+    // 2. Update active highlight in the sidebar list immediately
     const list = document.getElementById(GemiBoost.Config.DOM_IDS.LIST);
     if (list) {
       const allItems = list.querySelectorAll('.gemiboost-toc-item');
@@ -668,144 +735,157 @@ GemiBoost.UI = {
       });
     }
 
-    const cleanup = () => {
-      ac.abort();
-      this._isNavigating = false;
-      if (this._navController === ac) {
-        this._navController = null;
+    // 3. User manual interrupt handler (mouse wheel, touch or keydown gracefully abort auto-navigation)
+    const onUserInterrupt = (e) => {
+      if (e.target && e.target.closest && e.target.closest('#gemiboost-toc-container')) {
+        return; // Allow scrolling inside the sidebar itself
       }
+      cleanup();
+    };
+
+    const cleanup = () => {
+      if (this._cancelAnimation) {
+        this._cancelAnimation();
+        this._cancelAnimation = null;
+      }
+      this._isNavigating = false;
       window.removeEventListener('wheel', onUserInterrupt, { capture: true });
       window.removeEventListener('touchstart', onUserInterrupt, { capture: true });
       window.removeEventListener('keydown', onUserInterrupt, { capture: true });
-    };
-
-    // User manual interrupt handler (mouse wheel, touch or keydown cancel auto-navigation)
-    const onUserInterrupt = (e) => {
-      if (e.target && e.target.closest && e.target.closest('#gemiboost-toc-container')) {
-        return;
-      }
-      cleanup();
     };
 
     window.addEventListener('wheel', onUserInterrupt, { capture: true, passive: true });
     window.addEventListener('touchstart', onUserInterrupt, { capture: true, passive: true });
     window.addEventListener('keydown', onUserInterrupt, { capture: true, passive: true });
 
-    const startTime = Date.now();
-    const maxDuration = 6000; // 6s timeout safeguard
-    let lastScrollTop = scroller.scrollTop;
-    let stuckCount = 0;
-
-    const cruiseStep = () => {
-      if (ac.signal.aborted) return;
-
-      if (Date.now() - startTime > maxDuration) {
+    // Precision landing helper when target DOM element is available
+    const landOnTarget = (targetEl) => {
+      if (!targetEl) {
         cleanup();
         return;
       }
 
-      const targetEl = this.findTargetElement(item);
+      const targetRect = targetEl.getBoundingClientRect();
+      const scrollerRect = scroller.getBoundingClientRect();
+      const isAttachment = item.type === 'image' || item.type === 'file';
+      const desiredTop = isAttachment
+        ? Math.max(80, (scrollerRect.height - targetRect.height) / 2)
+        : 80;
 
-      if (targetEl) {
-        // Target is rendered in the DOM: progressive precision landing
-        const targetRect = targetEl.getBoundingClientRect();
-        const scrollerRect = scroller.getBoundingClientRect();
+      const delta = (targetRect.top - scrollerRect.top) - desiredTop;
+      const targetScrollTop = scroller.scrollTop + delta;
+      const distance = Math.abs(delta);
 
-        const isAttachment = item.type === 'image' || item.type === 'file';
-        const desiredTop = isAttachment
-          ? Math.max(80, (scrollerRect.height - targetRect.height) / 2)
-          : 80;
+      // Dynamic duration based on square root of distance (260ms - 520ms)
+      const duration = Math.min(520, Math.max(260, Math.round(200 + Math.sqrt(distance) * 4.2)));
 
-        const delta = (targetRect.top - scrollerRect.top) - desiredTop;
+      this._cancelAnimation = this.animateScrollTo(scroller, targetScrollTop, duration, () => {
+        // Arrival check: micro-settle if layout shifted during flight
+        const freshTarget = this.findTargetElement(item) || targetEl;
+        const freshTargetRect = freshTarget.getBoundingClientRect();
+        const freshDelta = (freshTargetRect.top - scrollerRect.top) - desiredTop;
 
-        // Arrival condition: within 15px of desired position
-        if (Math.abs(delta) <= 15) {
-          this.flashTargetElement(targetEl);
+        if (Math.abs(freshDelta) > 15) {
+          this._cancelAnimation = this.animateScrollTo(scroller, scroller.scrollTop + freshDelta, 140, () => {
+            this.flashTargetElement(freshTarget);
+            if (onUpdateCatalog) onUpdateCatalog();
+            cleanup();
+          });
+        } else {
+          this.flashTargetElement(freshTarget);
           if (onUpdateCatalog) onUpdateCatalog();
           cleanup();
-          return;
         }
+      });
+    };
 
-        // Boundary check: pinned at top or bottom limit
-        const atTop = scroller.scrollTop <= 0 && delta < 0;
-        const atBottom = scroller.scrollHeight - scroller.scrollTop <= scroller.clientHeight + 5 && delta > 0;
-        if (atTop || atBottom) {
-          this.flashTargetElement(targetEl);
-          cleanup();
-          return;
-        }
+    // Check if target is already in DOM
+    const initialTargetEl = this.findTargetElement(item);
+    if (initialTargetEl) {
+      landOnTarget(initialTargetEl);
+      return;
+    }
 
-        // Adaptive displacement curve based on remaining distance
-        if (Math.abs(delta) > 1200) {
-          // Long distance: rapid step by 75% of distance
-          scroller.scrollTop += delta * 0.75;
-          scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
-          setTimeout(cruiseStep, 70);
-        } else if (Math.abs(delta) > 250) {
-          // Medium distance: smooth step
-          scroller.scrollBy({ top: delta * 0.75, behavior: 'smooth' });
-          setTimeout(cruiseStep, 90);
-        } else {
-          // Final approach: precise smooth landing
-          targetEl.scrollIntoView({
-            behavior: 'smooth',
-            block: isAttachment ? 'center' : 'start'
-          });
-          setTimeout(cruiseStep, 120);
-        }
+    // Target not in DOM yet (virtualized): smooth hydration glide towards target's estimated location
+    const queries = Array.from(document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY));
+    let scrollUp = true;
+    if (queries.length > 0 && typeof item.queryIndex === 'number') {
+      const firstIdx = this.inferQueryIndex(queries[0]);
+      if (firstIdx !== -1) {
+        scrollUp = item.queryIndex < firstIdx;
       } else {
-        // Target is not yet rendered in DOM: infer direction and trigger virtual scroller hydration
-        const queries = Array.from(document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY));
-        let scrollDirection = -1; // -1 = up, 1 = down
+        scrollUp = scroller.scrollTop > 300;
+      }
+    } else {
+      scrollUp = scroller.scrollTop > 300;
+    }
 
-        if (queries.length > 0 && typeof item.queryIndex === 'number') {
-          const firstQuery = queries[0];
-          const firstIdx = this.inferQueryIndex(firstQuery);
-          if (firstIdx !== -1) {
-            scrollDirection = item.queryIndex < firstIdx ? -1 : 1;
+    const maxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+    const searchTarget = scrollUp ? 0 : maxScroll;
+    const searchDistance = Math.abs(searchTarget - scroller.scrollTop);
+    const searchDuration = Math.min(650, Math.max(320, Math.round(240 + Math.sqrt(searchDistance) * 4.5)));
+
+    // Continuous RAF hydration loop: glides toward boundary and checks for element appearance
+    let frameCount = 0;
+    const startTop = scroller.scrollTop;
+    const searchDelta = searchTarget - startTop;
+    const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+    const searchStartTime = performance.now();
+    let searchRafId = null;
+
+    const searchStep = (currentTime) => {
+      frameCount++;
+      const elapsed = currentTime - searchStartTime;
+      const progress = Math.min(1, elapsed / searchDuration);
+      const easedProgress = easeOutCubic(progress);
+
+      scroller.scrollTop = Math.round(startTop + searchDelta * easedProgress);
+
+      // Check every 4 frames (~60ms) if target element has been hydrated into DOM
+      if (frameCount % 4 === 0) {
+        const foundEl = this.findTargetElement(item);
+        if (foundEl) {
+          cancelAnimationFrame(searchRafId);
+          searchRafId = null;
+          landOnTarget(foundEl);
+          return;
+        }
+      }
+
+      if (progress < 1) {
+        searchRafId = requestAnimationFrame(searchStep);
+      } else {
+        // Search finished reaching boundary; final check after slight pause for DOM render
+        setTimeout(() => {
+          const finalFound = this.findTargetElement(item);
+          if (finalFound) {
+            landOnTarget(finalFound);
           } else {
-            scrollDirection = item.queryIndex === 0 ? -1 : (scroller.scrollTop > 500 ? -1 : 1);
-          }
-        }
-
-        const currentTop = scroller.scrollTop;
-        if (scrollDirection < 0) {
-          const stepAmount = Math.min(2500, Math.max(1000, currentTop));
-          scroller.scrollTop = Math.max(0, currentTop - stepAmount);
-        } else {
-          scroller.scrollTop = currentTop + 2500;
-        }
-
-        scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
-
-        if (Math.abs(scroller.scrollTop - lastScrollTop) < 2) {
-          stuckCount++;
-          if (stuckCount >= 6) {
+            const fallbackQueries = document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY);
+            if (fallbackQueries.length > 0) {
+              const fallbackEl = scrollUp ? fallbackQueries[0] : fallbackQueries[fallbackQueries.length - 1];
+              this.flashTargetElement(fallbackEl);
+            }
+            if (onUpdateCatalog) onUpdateCatalog();
             cleanup();
-            return;
           }
-        } else {
-          stuckCount = 0;
-        }
-        lastScrollTop = scroller.scrollTop;
-
-        setTimeout(cruiseStep, 120);
+        }, 80);
       }
     };
 
-    // Begin cruise navigation
-    cruiseStep();
+    searchRafId = requestAnimationFrame(searchStep);
+    this._cancelAnimation = () => {
+      if (searchRafId !== null) {
+        cancelAnimationFrame(searchRafId);
+        searchRafId = null;
+      }
+    };
   },
 
   // Backwards-compatible standalone scroll method
   scrollToTargetElement: function (targetQuery, item) {
     const targetEl = this.findTargetElement(item) || targetQuery;
     if (!targetEl) return;
-    const isAttachment = item.type === 'image' || item.type === 'file';
-    targetEl.scrollIntoView({
-      behavior: 'smooth',
-      block: isAttachment ? 'center' : 'start'
-    });
-    this.flashTargetElement(targetEl);
+    this.navigateToItem(item);
   }
 };
