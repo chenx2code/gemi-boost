@@ -413,14 +413,6 @@ body[data-theme="dark"],
   color: var(--gb-icon-file-color);
 }
 
-/* Sub-item attachment icons inherit active badge styling */
-.gemiboost-toc-item.is-active .gemiboost-icon-image,
-.gemiboost-toc-item.is-active .gemiboost-icon-file {
-  background-color: var(--gb-badge-active-bg);
-  color: var(--gb-badge-active-text);
-  transition: background-color 0.18s ease, color 0.18s ease;
-}
-
 /* Text Content Area */
 .gemiboost-item-content {
   flex: 1;
