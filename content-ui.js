@@ -646,9 +646,6 @@ GemiBoost.UI = {
     return targetQuery;
   },
 
-  // Standalone target flash helper (deprecated; visual state is cleanly indicated by the sidebar badge)
-  flashTargetElement: function () {},
-
   // Hardware-synchronized 60fps/120fps ease-out cubic scroll animation
   animateScrollTo: function (scroller, targetTop, duration, onComplete) {
     if (!scroller) return () => {};
