@@ -473,7 +473,7 @@ GemiBoost.UI = {
       }
       if (item.title) li.title = item.title;
 
-      // 1. Leading Slot: Turn Sequence Badge OR Type Icon Badge (identical 22px width for uniform indentation)
+      // 1. Leading Slot: Turn Number Badge (for turn root) or blank indentation spacer (for attachments)
       const leading = document.createElement('div');
       leading.className = 'gemiboost-item-leading';
 
@@ -481,36 +481,20 @@ GemiBoost.UI = {
         const turnNum = typeof item.queryIndex === 'number' ? item.queryIndex + 1 : index + 1;
         const badgeStr = turnNum < 10 ? '0' + turnNum : String(turnNum);
         leading.innerHTML = `<span class="gemiboost-turn-badge">${badgeStr}</span>`;
-      } else if (item.type === 'image') {
-        leading.innerHTML = `
-          <span class="gemiboost-type-icon gemiboost-icon-image" title="${strings.imageLabel}">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
-              <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
-            </svg>
-          </span>
-        `;
-      } else if (item.type === 'file') {
-        leading.innerHTML = `
-          <span class="gemiboost-type-icon gemiboost-icon-file" title="${strings.fileLabel}">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
-              <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
-            </svg>
-          </span>
-        `;
       } else {
-        leading.innerHTML = `<span class="gemiboost-turn-badge">--</span>`;
+        // Empty leading spacer providing exact indentation alignment with the turn badge above
+        leading.innerHTML = '';
       }
 
-      // 2. Text Content Area
+      // 2. Text Content Area: Prompt text or attachment with icon aligned with prompt text
       const content = document.createElement('div');
       content.className = 'gemiboost-item-content';
 
       const textSpan = document.createElement('span');
       textSpan.className = 'gemiboost-item-text';
 
-      // If this item is a turn root AND is an attachment (i.e. pure attachment turn),
-      // include a subtle inline icon inside the content area to indicate its media type
-      if (item.isTurnRoot && item.type === 'image') {
+      // Insert attachment icon for image or file items (aligned with prompt text)
+      if (item.type === 'image') {
         const imgIcon = document.createElement('span');
         imgIcon.className = 'gemiboost-inline-icon gemiboost-icon-image';
         imgIcon.title = strings.imageLabel;
@@ -520,7 +504,7 @@ GemiBoost.UI = {
           </svg>
         `;
         textSpan.appendChild(imgIcon);
-      } else if (item.isTurnRoot && item.type === 'file') {
+      } else if (item.type === 'file') {
         const fileIcon = document.createElement('span');
         fileIcon.className = 'gemiboost-inline-icon gemiboost-icon-file';
         fileIcon.title = strings.fileLabel;

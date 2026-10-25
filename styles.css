@@ -335,6 +335,7 @@ body[data-theme="dark"],
   flex-shrink: 0;
   width: 22px;
   min-width: 22px;
+  height: 20px;
 }
 
 .gemiboost-turn-badge {
