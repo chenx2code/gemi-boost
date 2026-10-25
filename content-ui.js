@@ -459,25 +459,49 @@ GemiBoost.UI = {
       const li = document.createElement('li');
       li.className = item.className || 'gemiboost-toc-item';
       li.dataset.queryIndex = item.queryIndex !== undefined ? String(item.queryIndex) : '';
+      if (item.subIndex !== undefined) {
+        li.dataset.subIndex = String(item.subIndex);
+      }
       if (item.title) li.title = item.title;
 
-      // 1. Leading turn number badge (every turn is numbered 01, 02, etc.)
+      // 1. Leading Slot: Turn Sequence Badge OR Type Icon Badge (identical 22px width for uniform indentation)
       const leading = document.createElement('div');
       leading.className = 'gemiboost-item-leading';
 
-      const turnNum = typeof item.queryIndex === 'number' ? item.queryIndex + 1 : index + 1;
-      const badgeStr = turnNum < 10 ? '0' + turnNum : String(turnNum);
-      leading.innerHTML = `<span class="gemiboost-turn-badge">${badgeStr}</span>`;
+      if (item.isTurnRoot) {
+        const turnNum = typeof item.queryIndex === 'number' ? item.queryIndex + 1 : index + 1;
+        const badgeStr = turnNum < 10 ? '0' + turnNum : String(turnNum);
+        leading.innerHTML = `<span class="gemiboost-turn-badge">${badgeStr}</span>`;
+      } else if (item.type === 'image') {
+        leading.innerHTML = `
+          <span class="gemiboost-type-icon gemiboost-icon-image" title="${strings.imageLabel}">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
+              <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+            </svg>
+          </span>
+        `;
+      } else if (item.type === 'file') {
+        leading.innerHTML = `
+          <span class="gemiboost-type-icon gemiboost-icon-file" title="${strings.fileLabel}">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
+              <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+            </svg>
+          </span>
+        `;
+      } else {
+        leading.innerHTML = `<span class="gemiboost-turn-badge">--</span>`;
+      }
 
-      // 2. Text Content Area with optional inline attachment icons
+      // 2. Text Content Area
       const content = document.createElement('div');
       content.className = 'gemiboost-item-content';
 
       const textSpan = document.createElement('span');
       textSpan.className = 'gemiboost-item-text';
 
-      // Insert attachment icon if this turn contains an image or file
-      if (item.hasImage || item.type === 'image' || item.type === 'image-text' || item.type === 'mixed-attachments') {
+      // If this item is a turn root AND is an attachment (i.e. pure attachment turn),
+      // include a subtle inline icon inside the content area to indicate its media type
+      if (item.isTurnRoot && item.type === 'image') {
         const imgIcon = document.createElement('span');
         imgIcon.className = 'gemiboost-inline-icon gemiboost-icon-image';
         imgIcon.title = strings.imageLabel;
@@ -487,9 +511,7 @@ GemiBoost.UI = {
           </svg>
         `;
         textSpan.appendChild(imgIcon);
-      }
-
-      if (item.hasFile || item.type === 'file' || item.type === 'file-text' || item.type === 'mixed-attachments') {
+      } else if (item.isTurnRoot && item.type === 'file') {
         const fileIcon = document.createElement('span');
         fileIcon.className = 'gemiboost-inline-icon gemiboost-icon-file';
         fileIcon.title = strings.fileLabel;
@@ -540,7 +562,7 @@ GemiBoost.UI = {
       }
     }
 
-    // Verify targetQuery matches item text
+    // Verify targetQuery matches item text if text is present
     if (targetQuery && item.rawText) {
       const qText = (
         targetQuery.querySelector(GemiBoost.Config.SELECTORS.QUERY_TEXT) || targetQuery
@@ -551,12 +573,16 @@ GemiBoost.UI = {
     }
 
     // Fallback: search all current DOM queries
-    if (!targetQuery && item.rawText) {
+    if (!targetQuery) {
       const queries = Array.from(document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY));
-      targetQuery = queries.find((q) => {
-        const textNode = q.querySelector(GemiBoost.Config.SELECTORS.QUERY_TEXT) || q;
-        return textNode.textContent.trim().includes(item.rawText.slice(0, 20));
-      });
+      if (item.rawText) {
+        targetQuery = queries.find((q) => {
+          const textNode = q.querySelector(GemiBoost.Config.SELECTORS.QUERY_TEXT) || q;
+          return textNode.textContent.trim().includes(item.rawText.slice(0, 20));
+        });
+      } else if (typeof item.queryIndex === 'number' && item.queryIndex < queries.length) {
+        targetQuery = queries[item.queryIndex];
+      }
     }
 
     if (targetQuery) {
@@ -579,8 +605,17 @@ GemiBoost.UI = {
       attempts++;
       const queries = Array.from(document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY));
       const found = queries.find((q) => {
-        const textNode = q.querySelector(GemiBoost.Config.SELECTORS.QUERY_TEXT) || q;
-        return item.rawText ? textNode.textContent.trim().includes(item.rawText.slice(0, 20)) : false;
+        if (item.rawText) {
+          const textNode = q.querySelector(GemiBoost.Config.SELECTORS.QUERY_TEXT) || q;
+          return textNode.textContent.trim().includes(item.rawText.slice(0, 20));
+        }
+        if (item.type === 'image') {
+          return q.querySelector('img:not(.user-icon)') !== null;
+        }
+        if (item.type === 'file') {
+          return q.querySelector(GemiBoost.Config.SELECTORS.FILE_CONTAINER) !== null;
+        }
+        return false;
       });
 
       if (found) {
@@ -596,7 +631,7 @@ GemiBoost.UI = {
 
   // Scroll to a specific sub-element (image/file) or user query block
   scrollToTargetElement: function (targetQuery, item) {
-    if (item.type === 'image' || (item.hasImage && !item.rawText)) {
+    if (item.type === 'image') {
       const validImgs = Array.from(targetQuery.querySelectorAll('img')).filter((img) => {
         if (img.classList.contains('user-icon') || (img.src && img.src.includes('googleusercontent.com/a/'))) {
           return false;
@@ -610,7 +645,7 @@ GemiBoost.UI = {
       const targetImg = validImgs[item.subIndex || 0];
       if (targetImg) targetImg.scrollIntoView({ behavior: 'smooth', block: 'center' });
       else targetQuery.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    } else if (item.type === 'file' || (item.hasFile && !item.rawText)) {
+    } else if (item.type === 'file') {
       const files = targetQuery.querySelectorAll(GemiBoost.Config.SELECTORS.FILE_CONTAINER);
       const targetFile = files[item.subIndex || 0];
       if (targetFile) targetFile.scrollIntoView({ behavior: 'smooth', block: 'center' });
