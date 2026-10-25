@@ -454,7 +454,7 @@ GemiBoost.UI = {
     // Update header turn count badge
     if (badge) {
       if (items && items.length > 0) {
-        const uniqueTurns = new Set(items.map((it) => it.queryIndex)).size;
+        const uniqueTurns = items.filter((it) => it.isTurnRoot !== false).length;
         badge.textContent = strings.badgeText(uniqueTurns);
         badge.classList.remove('is-hidden');
       } else {
@@ -482,6 +482,8 @@ GemiBoost.UI = {
     const currentScrollTop = list.scrollTop;
     list.innerHTML = '';
 
+    let turnCounter = 0;
+
     items.forEach((item, index) => {
       const li = document.createElement('li');
       li.className = item.className || 'gemiboost-toc-item';
@@ -500,9 +502,9 @@ GemiBoost.UI = {
         : (item.subIndex === undefined || item.subIndex === null);
 
       if (isTurnRoot) {
+        turnCounter++;
         li.dataset.isTurnRoot = 'true';
-        const turnNum = typeof item.queryIndex === 'number' ? item.queryIndex + 1 : index + 1;
-        const badgeStr = turnNum < 10 ? '0' + turnNum : String(turnNum);
+        const badgeStr = turnCounter < 10 ? '0' + turnCounter : String(turnCounter);
         leading.innerHTML = `<span class="gemiboost-turn-badge">${badgeStr}</span>`;
       } else {
         li.dataset.isTurnRoot = 'false';

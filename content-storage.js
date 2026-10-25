@@ -37,6 +37,7 @@ GemiBoost.Storage = {
               lastQueryIndex = it.queryIndex !== undefined ? it.queryIndex : idx;
             }
           });
+          cached.items = this.normalizeItems(cached.items);
         }
         return callback(cached);
       }
@@ -66,13 +67,30 @@ GemiBoost.Storage = {
     }
   },
 
+  // Normalize items to ensure globally contiguous queryIndex for every turn
+  normalizeItems: function (items) {
+    if (!items || items.length === 0) return [];
+    let currentTurn = -1;
+    return items.map((it) => {
+      const isTurnRoot = it.isTurnRoot !== false;
+      if (isTurnRoot) {
+        currentTurn++;
+      }
+      return {
+        ...it,
+        queryIndex: currentTurn >= 0 ? currentTurn : 0
+      };
+    });
+  },
+
   // Save chat TOC data to persistent storage
   saveChatCache: function (chatId, items, isFullySynced = false) {
     if (!chatId || !items || items.length === 0) return;
+    const normalized = this.normalizeItems(items);
     const key = `gemiboost_chat_${chatId}`;
     const data = {
       version: GemiBoost.Config.CACHE_VERSION,
-      items: items.map((it) => ({
+      items: normalized.map((it) => ({
         type: it.type,
         isTurnRoot: it.isTurnRoot !== false,
         display: it.display,
@@ -204,13 +222,17 @@ GemiBoost.Storage = {
         hasChanges = true;
       }
 
-      // 3. Fallback: If user typed a new message when no items matched
+      // 3. Fallback: If no DOM items matched cached items, append all new items that are not in cache
       if (firstDomMatch === -1 && domItems.length > 0) {
-        const lastDom = domItems[domItems.length - 1];
-        if (!cachedItems.some((c) => isMatch(c, lastDom))) {
-          updated = [...cachedItems, lastDom];
+        const newItems = domItems.filter((d) => !cachedItems.some((c) => isMatch(c, d)));
+        if (newItems.length > 0) {
+          updated = [...cachedItems, ...newItems];
           hasChanges = true;
         }
+      }
+
+      if (hasChanges) {
+        updated = this.normalizeItems(updated);
       }
 
       const domSet = new Set(domItems.map((d) => `${d.type}:${d.rawText}:${d.subIndex ?? ''}`));
@@ -219,11 +241,11 @@ GemiBoost.Storage = {
         isOffDOM: !domSet.has(`${c.type}:${c.rawText}:${c.subIndex ?? ''}`)
       }));
 
-      return { items: finalItems, hasChanges, updatedList: updated, isCorrupted: false };
+      return { items: this.normalizeItems(finalItems), hasChanges, updatedList: updated, isCorrupted: false };
     }
 
     // If cache is not fully synced, DOM is the authoritative source
-    return { items: domItems, hasChanges: false, isCorrupted: false };
+    return { items: this.normalizeItems(domItems), hasChanges: false, isCorrupted: false };
   },
 
   STORAGE_KEY_SETTINGS: GemiBoost.Config.SETTINGS.STORAGE_KEY,
