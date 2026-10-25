@@ -1,64 +1,195 @@
 /* styles.css */
+/* GemiBoost Google Material Design 3 Styles for Gemini Web */
+
+:root {
+  --gb-font-family: 'Google Sans', 'Google Sans Text', Roboto, 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+
+  /* Light Theme (Material Design 3 / Gemini UI) */
+  --gb-container-bg: #f8fafd;
+  --gb-header-bg: #ffffff;
+  --gb-border: #e2e7ee;
+  --gb-divider: #edf1f7;
+  --gb-text-primary: #1f1f1f;
+  --gb-text-secondary: #444746;
+  --gb-text-tertiary: #747775;
+  --gb-primary: #0b57d0;
+  --gb-primary-hover: #0842a0;
+  --gb-primary-container: #d3e3fd;
+  --gb-on-primary-container: #041e49;
+  --gb-badge-bg: #e9eef6;
+  --gb-badge-text: #444746;
+  --gb-badge-active-bg: #d3e3fd;
+  --gb-badge-active-text: #041e49;
+  --gb-item-hover: #edf2f9;
+  --gb-item-active-bg: #edf4fe;
+  --gb-item-active-text: #041e49;
+  --gb-btn-color: #444746;
+  --gb-btn-hover-bg: #eef2f9;
+  --gb-btn-hover-color: #0b57d0;
+  --gb-scrollbar-thumb: #dadce0;
+  --gb-scrollbar-hover: #bdc1c6;
+  --gb-icon-image-bg: #f3e8fd;
+  --gb-icon-image-color: #7c3aed;
+  --gb-icon-file-bg: #e0f2fe;
+  --gb-icon-file-color: #0284c7;
+  --gb-success-color: #137333;
+  --gb-success-bg: #e6f4ea;
+}
+
+/* Dark Theme Support (Gemini Web Dark Palette) */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --gb-container-bg: #1e1f20;
+    --gb-header-bg: #1e1f20;
+    --gb-border: #333537;
+    --gb-divider: #282a2c;
+    --gb-text-primary: #e3e3e3;
+    --gb-text-secondary: #c4c7c5;
+    --gb-text-tertiary: #8e918f;
+    --gb-primary: #a8c7fa;
+    --gb-primary-hover: #d3e3fd;
+    --gb-primary-container: rgba(168, 199, 250, 0.16);
+    --gb-on-primary-container: #a8c7fa;
+    --gb-badge-bg: #2d2f31;
+    --gb-badge-text: #c4c7c5;
+    --gb-badge-active-bg: #a8c7fa;
+    --gb-badge-active-text: #00325b;
+    --gb-item-hover: #282a2c;
+    --gb-item-active-bg: rgba(168, 199, 250, 0.16);
+    --gb-item-active-text: #e3e3e3;
+    --gb-btn-color: #c4c7c5;
+    --gb-btn-hover-bg: #2d2f31;
+    --gb-btn-hover-color: #a8c7fa;
+    --gb-scrollbar-thumb: #444746;
+    --gb-scrollbar-hover: #5f6368;
+    --gb-icon-image-bg: rgba(218, 185, 255, 0.15);
+    --gb-icon-image-color: #d8b4fe;
+    --gb-icon-file-bg: rgba(186, 230, 253, 0.15);
+    --gb-icon-file-color: #7dd3fc;
+    --gb-success-color: #81c995;
+    --gb-success-bg: rgba(129, 201, 149, 0.16);
+  }
+}
+
+/* Explicit Gemini dark classes on body or html */
+body.dark-theme,
+html.dark-theme,
+html[data-theme="dark"],
+body[data-theme="dark"],
+[data-theme="dark"] {
+  --gb-container-bg: #1e1f20;
+  --gb-header-bg: #1e1f20;
+  --gb-border: #333537;
+  --gb-divider: #282a2c;
+  --gb-text-primary: #e3e3e3;
+  --gb-text-secondary: #c4c7c5;
+  --gb-text-tertiary: #8e918f;
+  --gb-primary: #a8c7fa;
+  --gb-primary-hover: #d3e3fd;
+  --gb-primary-container: rgba(168, 199, 250, 0.16);
+  --gb-on-primary-container: #a8c7fa;
+  --gb-badge-bg: #2d2f31;
+  --gb-badge-text: #c4c7c5;
+  --gb-badge-active-bg: #a8c7fa;
+  --gb-badge-active-text: #00325b;
+  --gb-item-hover: #282a2c;
+  --gb-item-active-bg: rgba(168, 199, 250, 0.16);
+  --gb-item-active-text: #e3e3e3;
+  --gb-btn-color: #c4c7c5;
+  --gb-btn-hover-bg: #2d2f31;
+  --gb-btn-hover-color: #a8c7fa;
+  --gb-scrollbar-thumb: #444746;
+  --gb-scrollbar-hover: #5f6368;
+  --gb-icon-image-bg: rgba(218, 185, 255, 0.15);
+  --gb-icon-image-color: #d8b4fe;
+  --gb-icon-file-bg: rgba(186, 230, 253, 0.15);
+  --gb-icon-file-color: #7dd3fc;
+  --gb-success-color: #81c995;
+  --gb-success-bg: rgba(129, 201, 149, 0.16);
+}
+
 /* Main Push Container */
 #gemiboost-toc-container {
-  /* No longer position: fixed! It flows inside the flex container */
   position: relative;
-  /* Start collapsed */
   width: 0;
   height: 100vh;
-  /* Flex shrink 0 so it doesn't get arbitrarily compressed */
   flex-shrink: 0;
-  background-color: #ffffff;
-  overflow: hidden; /* Hide content when width is shrinking */
-  /* Native Gemini transition curve */
+  background-color: var(--gb-container-bg);
+  overflow: hidden;
   transition: width 0.3s cubic-bezier(0.2, 0, 0, 1), border-left 0.3s cubic-bezier(0.2, 0, 0, 1);
   z-index: 10;
-  
-  /* Remove border when closed to prevent 1px glitch */
   border-left: 0px solid transparent;
 }
 
 #gemiboost-toc-container.panel-visible {
-  width: 288px; /* Match standard left sidebar width */
-  border-left: 1px solid #e0e0e0;
+  width: 288px;
+  border-left: 1px solid var(--gb-border);
 }
 
-/* Inner wrapper to prevent text squeezing during width animation */
+/* Inner wrapper */
 #gemiboost-toc-inner {
-  width: 288px; /* Fixed width matching the open state */
+  width: 288px;
   height: 100%;
   display: flex;
   flex-direction: column;
-  color: #1f1f1f;
-  font-family: 'Google Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--gb-text-primary);
+  font-family: var(--gb-font-family);
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Header */
 .gemiboost-toc-header {
-  padding: 14px 20px;
-  border-bottom: 1px solid #e0e0e0;
+  padding: 12px 14px 12px 16px;
+  border-bottom: 1px solid var(--gb-border);
+  background-color: var(--gb-header-bg);
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-shrink: 0;
   gap: 8px;
+  min-height: 52px;
+  box-sizing: border-box;
+}
+
+.gemiboost-toc-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .gemiboost-toc-title {
   font-weight: 500;
   font-size: 15px;
-  color: #1f1f1f;
+  color: var(--gb-text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  min-width: 0;
+  letter-spacing: -0.15px;
+}
+
+.gemiboost-toc-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background-color: var(--gb-badge-bg);
+  color: var(--gb-badge-text);
+  line-height: 1.25;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.gemiboost-toc-badge:empty,
+.gemiboost-toc-badge.is-hidden {
+  display: none;
 }
 
 .gemiboost-toc-header-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin-right: -4px;
+  gap: 2px;
   flex-shrink: 0;
 }
 
@@ -68,82 +199,74 @@
   background: transparent;
   border: none;
   cursor: pointer;
-  color: #5f6368;
+  color: var(--gb-btn-color);
   border-radius: 50%;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: inherit;
-  transition: all 0.25s cubic-bezier(0.2, 0, 0, 1);
+  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .gemiboost-toc-close:hover,
 .gemiboost-toc-sync-btn:hover,
 .gemiboost-toc-export-btn:hover {
-  background-color: #f1f3f4;
-  color: #1a73e8;
-}
-
-.gemiboost-toc-close:focus,
-.gemiboost-toc-sync-btn:focus,
-.gemiboost-toc-export-btn:focus {
-  outline: none;
+  background-color: var(--gb-btn-hover-bg);
+  color: var(--gb-btn-hover-color);
 }
 
 .gemiboost-toc-close:focus-visible,
 .gemiboost-toc-sync-btn:focus-visible,
 .gemiboost-toc-export-btn:focus-visible {
-  outline: 2px solid #1a73e8;
+  outline: 2px solid var(--gb-primary);
   outline-offset: 1px;
 }
 
-/* State 1: Syncing / Loading (Hardware-Accelerated Continuous Spin) */
+/* Button States: Syncing / Loading */
 .gemiboost-toc-sync-btn.is-syncing,
 .gemiboost-toc-export-btn.is-loading {
-  color: #1a73e8;
-  background-color: #e8f0fe;
+  color: var(--gb-primary);
+  background-color: var(--gb-primary-container);
   cursor: default;
 }
 
-/* Independent GPU Composited Layer for the spinner */
+/* Spinner GPU Animation */
 .gemiboost-spinner-composited {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   will-change: transform;
   transform: translateZ(0);
   animation: gemiboost-compositor-spin 0.85s linear infinite;
-  backface-visibility: hidden;
-  perspective: 1000px;
 }
 
 .gemiboost-spinner-composited svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   display: block;
 }
 
-/* State 2: Synced / Success Completed (Green Checkmark Feedback) */
+/* Button States: Success Completed */
 .gemiboost-toc-sync-btn.is-synced,
 .gemiboost-toc-export-btn.is-success {
-  color: #137333;
-  background-color: #e6f4ea;
+  color: var(--gb-success-color);
+  background-color: var(--gb-success-bg);
   cursor: default;
 }
 
 .gemiboost-toc-sync-btn.is-synced svg,
 .gemiboost-toc-export-btn.is-success svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   display: block;
 }
 
-/* Compositor-only rotation animation running on GPU thread */
 @keyframes gemiboost-compositor-spin {
   from {
     transform: rotate(0deg) translateZ(0);
@@ -156,7 +279,7 @@
 /* List container */
 #gemiboost-toc-list {
   list-style: none;
-  padding: 8px 0;
+  padding: 8px 6px;
   margin: 0;
   overflow-y: auto;
   flex-grow: 1;
@@ -170,36 +293,179 @@
   background: transparent;
 }
 #gemiboost-toc-list::-webkit-scrollbar-thumb {
-  background-color: #dadce0;
+  background-color: var(--gb-scrollbar-thumb);
   border-radius: 10px;
 }
 #gemiboost-toc-list:hover::-webkit-scrollbar-thumb {
-  background-color: #bdc1c6;
+  background-color: var(--gb-scrollbar-hover);
 }
 
-/* List Items */
+/* Material 3 Navigation Tile */
 .gemiboost-toc-item {
-  padding: 14px 24px;
-  font-size: 14px;
-  line-height: 1.5;
-  color: #3c4043;
+  margin: 2px 4px 4px 4px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13.5px;
+  line-height: 1.42;
+  color: var(--gb-text-primary);
   cursor: pointer;
-  transition: background-color 0.2s ease;
-  word-break: break-word;
+  position: relative;
+  transition: background-color 0.35s cubic-bezier(0.2, 0, 0, 1), color 0.18s ease;
 }
 
 .gemiboost-toc-item:hover {
-  background-color: #f8f9fa;
+  background-color: var(--gb-item-hover);
 }
 
+/* Active State - Minimalist position indicator (badge indicates position) */
+.gemiboost-toc-item.is-active {
+  background-color: transparent;
+  color: var(--gb-text-primary);
+  font-weight: 500;
+}
+
+.gemiboost-toc-item.is-active:hover {
+  background-color: var(--gb-item-hover);
+}
+
+/* Temporary highlight during click navigation - MUST override :hover and normal active */
+.gemiboost-toc-item.is-navigating,
+.gemiboost-toc-item.is-navigating:hover {
+  background-color: var(--gb-item-active-bg) !important;
+  transition: none !important; /* Instant feedback on click, smooth fade on removal */
+}
+
+/* Leading badge and icons */
+.gemiboost-item-leading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  min-width: 22px;
+  height: 20px;
+}
+
+.gemiboost-turn-badge {
+  min-width: 22px;
+  height: 20px;
+  padding: 0 4px;
+  border-radius: 6px;
+  background-color: var(--gb-badge-bg);
+  color: var(--gb-badge-text);
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+  box-sizing: border-box;
+  transition: background-color 0.18s ease, color 0.18s ease;
+}
+
+.gemiboost-toc-item.is-active .gemiboost-turn-badge {
+  background-color: var(--gb-badge-active-bg);
+  color: var(--gb-badge-active-text);
+}
+
+.gemiboost-type-icon {
+  width: 22px;
+  height: 20px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.gemiboost-type-icon svg {
+  display: block;
+}
+
+.gemiboost-inline-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  margin-right: 5px;
+  vertical-align: -3px;
+  flex-shrink: 0;
+}
+
+.gemiboost-inline-icon svg {
+  display: block;
+}
+
+.gemiboost-icon-image {
+  background-color: var(--gb-icon-image-bg);
+  color: var(--gb-icon-image-color);
+}
+
+.gemiboost-icon-file {
+  background-color: var(--gb-icon-file-bg);
+  color: var(--gb-icon-file-color);
+}
+
+/* Text Content Area */
+.gemiboost-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.gemiboost-item-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+/* Empty State */
 .gemiboost-toc-empty {
-  padding: 24px;
+  padding: 48px 16px;
   text-align: center;
-  color: #5f6368;
-  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--gb-text-tertiary);
+  cursor: default;
 }
 
-/* Toggle Button injected into the Native Toolbar */
+.gemiboost-empty-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background-color: var(--gb-badge-bg);
+  color: var(--gb-text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.gemiboost-empty-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--gb-text-primary);
+}
+
+.gemiboost-empty-desc {
+  font-size: 12px;
+  color: var(--gb-text-tertiary);
+  line-height: 1.4;
+  max-width: 200px;
+}
+
+/* Native Toolbar Toggle Button */
 #gemiboost-toc-toggle {
   position: relative;
   top: auto;
@@ -215,13 +481,13 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: #5f6368;
-  transition: all 0.2s ease;
+  color: var(--gb-btn-color);
+  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
 }
 
 #gemiboost-toc-toggle:hover {
-  background-color: #f1f3f4;
-  color: #1a73e8;
+  background-color: var(--gb-btn-hover-bg);
+  color: var(--gb-primary);
   box-shadow: none;
 }
 
@@ -231,10 +497,10 @@ body top-bar-actions {
 }
 
 body.gemiboost-toc-open top-bar-actions {
-  transform: translateX(-288px) !important; /* Move left by the exact width of the TOC */
+  transform: translateX(-288px) !important;
 }
 
-/* Hide the toggle button completely when the TOC is open */
+/* Hide toggle button when TOC is open */
 body.gemiboost-toc-open #gemiboost-toc-toggle {
   display: none !important;
 }

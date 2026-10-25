@@ -163,9 +163,6 @@ GemiBoost.Sync = {
 
     // Extract complete list directly from live DOM in top-to-bottom order
     const fullDomItems = GemiBoost.Extractor.extractFromDOM();
-    if (chatId && fullDomItems && fullDomItems.length > 0) {
-      GemiBoost.Storage.saveChatCache(chatId, fullDomItems, true);
-    }
 
     if (!silentUI && GemiBoost.UI) {
       GemiBoost.UI.setSyncButtonState('synced', `已完整同步全部 ${prevCount} 条历史提问`);

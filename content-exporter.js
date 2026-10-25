@@ -112,7 +112,10 @@ GemiBoost.Exporter = {
               GemiBoost.UI.setExportButtonState('syncing', `正在加载历史记录 (已加载 ${count} 条)...`);
             }
           },
-          onComplete: () => {
+          onComplete: (fullItems) => {
+            if (chatId && fullItems && fullItems.length > 0 && GemiBoost.Storage) {
+              GemiBoost.Storage.saveChatCache(chatId, fullItems, true);
+            }
             resolve();
           },
           onAborted: () => {
