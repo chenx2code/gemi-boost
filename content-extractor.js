@@ -4,6 +4,21 @@
 window.GemiBoost = window.GemiBoost || {};
 
 GemiBoost.Extractor = {
+  // Extract and clean raw prompt text from a query DOM node, stripping hidden screen reader labels
+  getCleanPromptText: function (promptEl) {
+    if (!promptEl) return '';
+    const textNode = promptEl.querySelector(GemiBoost.Config.SELECTORS.QUERY_TEXT) || promptEl;
+    let text = textNode.textContent ? textNode.textContent.trim() : '';
+    const hiddenLabel = promptEl.querySelector(GemiBoost.Config.SELECTORS.HIDDEN_LABEL);
+    if (hiddenLabel && hiddenLabel.textContent) {
+      const hiddenText = hiddenLabel.textContent.trim();
+      if (text.startsWith(hiddenText)) {
+        text = text.substring(hiddenText.length).trim();
+      }
+    }
+    return text;
+  },
+
   // Extract structured prompt data items from the current live DOM for TOC navigation
   extractFromDOM: function () {
     const userPrompts = document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY);
@@ -12,19 +27,11 @@ GemiBoost.Extractor = {
     const extractedData = [];
 
     userPrompts.forEach((promptEl, index) => {
+      // Stamp deterministic index onto DOM node for O(1) query identification
+      promptEl.dataset.gbQueryIndex = String(index);
+
       // 1. Text extraction using textContent to prevent empty string from off-screen / content-visibility
-      const textNode = promptEl.querySelector(GemiBoost.Config.SELECTORS.QUERY_TEXT) || promptEl;
-      let text = textNode.textContent ? textNode.textContent.trim() : '';
-
-      // Dynamically filter out hidden text intended for screen readers (e.g. "You said ", "你说了 ")
-      const hiddenLabel = promptEl.querySelector(GemiBoost.Config.SELECTORS.HIDDEN_LABEL);
-      if (hiddenLabel && hiddenLabel.textContent) {
-        const hiddenText = hiddenLabel.textContent.trim();
-        if (text.startsWith(hiddenText)) {
-          text = text.substring(hiddenText.length).trim();
-        }
-      }
-
+      let text = this.getCleanPromptText(promptEl);
       const rawText = text;
       const fileTexts = new Set();
 

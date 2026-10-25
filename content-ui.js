@@ -601,21 +601,82 @@ GemiBoost.UI = {
     }
   },
 
+  // Extract and clean raw prompt text from a query DOM node, stripping hidden screen reader labels
+  getCleanPromptText: function (queryEl) {
+    if (!queryEl) return '';
+    if (GemiBoost.Extractor && GemiBoost.Extractor.getCleanPromptText) {
+      return GemiBoost.Extractor.getCleanPromptText(queryEl);
+    }
+    const textNode = queryEl.querySelector(GemiBoost.Config.SELECTORS.QUERY_TEXT) || queryEl;
+    let text = textNode.textContent ? textNode.textContent.trim() : '';
+    const hiddenLabel = queryEl.querySelector(GemiBoost.Config.SELECTORS.HIDDEN_LABEL);
+    if (hiddenLabel && hiddenLabel.textContent) {
+      const hiddenText = hiddenLabel.textContent.trim();
+      if (text.startsWith(hiddenText)) {
+        text = text.substring(hiddenText.length).trim();
+      }
+    }
+    return text;
+  },
+
+  // Strip leading slash command or skill identifier (e.g. "/multi-subagent-search ")
+  stripSlashCommand: function (text) {
+    if (!text) return '';
+    return text.replace(/^\/[a-zA-Z0-9_\-\.]+\s*/, '').trim();
+  },
+
   // Infer the global queryIndex of a given DOM query element by matching with TOC list
   inferQueryIndex: function (queryEl) {
     if (!queryEl) return -1;
-    const textNode = queryEl.querySelector(GemiBoost.Config.SELECTORS.QUERY_TEXT) || queryEl;
-    const qText = textNode.textContent ? textNode.textContent.trim() : '';
+
+    // 0. Direct dataset attribute check (O(1))
+    if (queryEl.dataset && queryEl.dataset.gbQueryIndex !== undefined) {
+      const idx = parseInt(queryEl.dataset.gbQueryIndex, 10);
+      if (!isNaN(idx)) return idx;
+    }
+
+    const qText = this.getCleanPromptText(queryEl);
     if (!qText) return -1;
 
-    // 1. Fast in-memory lookup via cached items (avoids DOM traversals)
+    // 1. In-memory lookup via cached items
     if (this._items && this._items.length > 0) {
-      const qPrefix = qText.slice(0, 20);
+      // 1A. Exact full-text match
       for (const item of this._items) {
-        const itemText = item.rawText || item.title || item.display || '';
-        if (itemText && (qText.includes(itemText.slice(0, 20)) || itemText.includes(qPrefix))) {
+        if (item.rawText && item.rawText.trim() === qText.trim()) {
           if (typeof item.queryIndex === 'number') return item.queryIndex;
         }
+      }
+
+      // 1B. Payload match (stripping slash commands to prevent collision)
+      const qPayload = this.stripSlashCommand(qText);
+      if (qPayload && qPayload.length >= 3) {
+        for (const item of this._items) {
+          const itemPayload = this.stripSlashCommand(item.rawText || item.title || '');
+          if (itemPayload && itemPayload === qPayload) {
+            if (typeof item.queryIndex === 'number') return item.queryIndex;
+          }
+        }
+      }
+
+      // 1C. Best overlap match (scored, not short-circuited)
+      let bestItem = null;
+      let maxOverlap = 0;
+      for (const item of this._items) {
+        const itemPayload = this.stripSlashCommand(item.rawText || item.title || '');
+        if (qPayload && itemPayload) {
+          let overlap = 0;
+          const minLen = Math.min(qPayload.length, itemPayload.length);
+          while (overlap < minLen && qPayload[overlap] === itemPayload[overlap]) {
+            overlap++;
+          }
+          if (overlap > 15 && overlap > maxOverlap) {
+            maxOverlap = overlap;
+            bestItem = item;
+          }
+        }
+      }
+      if (bestItem && typeof bestItem.queryIndex === 'number') {
+        return bestItem.queryIndex;
       }
     }
 
@@ -626,7 +687,7 @@ GemiBoost.UI = {
     const items = list.querySelectorAll('.gemiboost-toc-item');
     for (const li of items) {
       const title = li.title || '';
-      if (title && (qText.includes(title.slice(0, 20)) || title.includes(qText.slice(0, 20)))) {
+      if (title && (title.trim() === qText.trim())) {
         const idx = parseInt(li.dataset.queryIndex, 10);
         if (!isNaN(idx)) return idx;
       }
@@ -636,30 +697,122 @@ GemiBoost.UI = {
 
   // Locate the target DOM element for a given TOC item (prompt container or specific attachment)
   findTargetElement: function (item) {
+    if (!item) return null;
     const queries = Array.from(document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY));
     if (queries.length === 0) return null;
 
     let targetQuery = null;
 
-    // 1. Precise text matching
-    if (item.rawText) {
-      targetQuery = queries.find((q) => {
-        const textNode = q.querySelector(GemiBoost.Config.SELECTORS.QUERY_TEXT) || q;
-        const qText = textNode.textContent.trim();
-        return qText.includes(item.rawText.slice(0, 20)) || item.rawText.includes(qText.slice(0, 20));
-      });
+    // Tier 1: Direct DOM dataset attribute match (O(1) exact query index match)
+    if (typeof item.queryIndex === 'number') {
+      const directEl = document.querySelector(`${GemiBoost.Config.SELECTORS.USER_QUERY}[data-gb-query-index="${item.queryIndex}"]`);
+      if (directEl) {
+        if (!item.rawText) {
+          targetQuery = directEl;
+        } else {
+          const directText = this.getCleanPromptText(directEl);
+          if (directText === item.rawText) {
+            targetQuery = directEl;
+          } else {
+            const directPayload = this.stripSlashCommand(directText);
+            const itemPayload = this.stripSlashCommand(item.rawText);
+            if (directPayload && itemPayload && directPayload === itemPayload) {
+              targetQuery = directEl;
+            }
+          }
+        }
+      }
     }
 
-    // 2. Index-based matching for pure attachments or fallback
-    if (!targetQuery && typeof item.queryIndex === 'number') {
-      targetQuery = queries.find((q) => this.inferQueryIndex(q) === item.queryIndex);
+    // Tier 2: Exact Full-Text Match (Cleaned)
+    if (!targetQuery && item.rawText) {
+      const targetText = item.rawText.trim();
+      const exactMatches = queries.filter((q) => {
+        const qText = this.getCleanPromptText(q);
+        return qText === targetText;
+      });
 
-      if (!targetQuery && item.queryIndex < queries.length) {
-        const candidate = queries[item.queryIndex];
-        const inferred = this.inferQueryIndex(candidate);
-        if (inferred === -1 || inferred === item.queryIndex) {
-          targetQuery = candidate;
+      if (exactMatches.length === 1) {
+        targetQuery = exactMatches[0];
+      } else if (exactMatches.length > 1) {
+        // Multiple identical queries (e.g. repeated "继续"): pick closest to item.queryIndex
+        let bestCandidate = exactMatches[0];
+        let minDiff = Infinity;
+        for (const candidate of exactMatches) {
+          const candidateIdx = queries.indexOf(candidate);
+          const diff = Math.abs(candidateIdx - (item.queryIndex || 0));
+          if (diff < minDiff) {
+            minDiff = diff;
+            bestCandidate = candidate;
+          }
         }
+        targetQuery = bestCandidate;
+      }
+    }
+
+    // Tier 3: Payload Text Match (Stripping Slash Command / Skill prefix)
+    if (!targetQuery && item.rawText) {
+      const itemPayload = this.stripSlashCommand(item.rawText);
+      if (itemPayload && itemPayload.length >= 3) {
+        const payloadMatches = queries.filter((q) => {
+          const qText = this.getCleanPromptText(q);
+          const qPayload = this.stripSlashCommand(qText);
+          return qPayload === itemPayload || (qPayload && qPayload.startsWith(itemPayload)) || (itemPayload.startsWith(qPayload));
+        });
+
+        if (payloadMatches.length === 1) {
+          targetQuery = payloadMatches[0];
+        } else if (payloadMatches.length > 1) {
+          let bestCandidate = payloadMatches[0];
+          let minDiff = Infinity;
+          for (const candidate of payloadMatches) {
+            const candidateIdx = queries.indexOf(candidate);
+            const diff = Math.abs(candidateIdx - (item.queryIndex || 0));
+            if (diff < minDiff) {
+              minDiff = diff;
+              bestCandidate = candidate;
+            }
+          }
+          targetQuery = bestCandidate;
+        }
+      }
+    }
+
+    // Tier 4: Long Prefix / Substring Match (Score-based, best match wins, NOT first match)
+    if (!targetQuery && item.rawText) {
+      const targetText = item.rawText.trim();
+      let bestCandidate = null;
+      let maxOverlap = 0;
+
+      for (const q of queries) {
+        const qText = this.getCleanPromptText(q);
+        if (!qText) continue;
+
+        const qPayload = this.stripSlashCommand(qText);
+        const itemPayload = this.stripSlashCommand(targetText);
+
+        if (qPayload && itemPayload) {
+          let overlap = 0;
+          const minLen = Math.min(qPayload.length, itemPayload.length);
+          while (overlap < minLen && qPayload[overlap] === itemPayload[overlap]) {
+            overlap++;
+          }
+          if (overlap > 10 && overlap > maxOverlap) {
+            maxOverlap = overlap;
+            bestCandidate = q;
+          }
+        }
+      }
+
+      if (bestCandidate) {
+        targetQuery = bestCandidate;
+      }
+    }
+
+    // Tier 5: Direct queryIndex fallback
+    if (!targetQuery && typeof item.queryIndex === 'number') {
+      if (item.queryIndex < queries.length) {
+        targetQuery = queries[item.queryIndex];
       }
     }
 
