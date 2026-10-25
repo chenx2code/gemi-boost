@@ -452,6 +452,7 @@ body[data-theme="dark"],
   margin-right: 4px;
 }
 .gemiboost-type-tag-folder { color: var(--gb-icon-folder-color); }
+.gemiboost-type-tag-image { color: var(--gb-icon-image-color); }
 .gemiboost-type-tag-code { color: var(--gb-icon-code-color); }
 .gemiboost-type-tag-pdf { color: var(--gb-icon-pdf-color); }
 .gemiboost-type-tag-table { color: var(--gb-icon-table-color); }

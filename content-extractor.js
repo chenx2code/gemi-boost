@@ -110,20 +110,18 @@ GemiBoost.Extractor = {
 
         // Attachments become subsequent rows in the same turn
         validImages.forEach((img, imgIdx) => {
-          let label = img.alt || img.title || '';
-          if (!label) {
-            const parent = img.closest('[aria-label]');
-            if (parent) label = parent.getAttribute('aria-label');
-          }
-          if (!label) {
-            label = validImages.length > 1 ? `[Image ${imgIdx + 1}]` : '[Image]';
-          }
+          const imgInfo = this.extractImageInfo(img, imgIdx, validImages.length);
           extractedData.push({
             type: 'image',
             fileCategory: 'image',
             isTurnRoot: false,
-            display: label,
-            title: label,
+            fileType: imgInfo.fileType,
+            fileName: imgInfo.fileName,
+            display: imgInfo.display,
+            title: imgInfo.fileName || imgInfo.display,
+            isDefaultName: imgInfo.isDefaultName,
+            imageIndex: imgInfo.imageIndex,
+            totalImages: imgInfo.totalImages,
             className: 'gemiboost-toc-item gemiboost-toc-attachment',
             queryIndex: index,
             subIndex: imgIdx,
@@ -150,21 +148,21 @@ GemiBoost.Extractor = {
       } else if (hasImages) {
         // B. Turn is pure attachments starting with images (no text)
         validImages.forEach((img, imgIdx) => {
-          let label = img.alt || img.title || '';
-          if (!label) {
-            const parent = img.closest('[aria-label]');
-            if (parent) label = parent.getAttribute('aria-label');
-          }
-          if (!label) {
-            label = validImages.length > 1 ? `[Image ${imgIdx + 1}]` : '[Image]';
-          }
+          const imgInfo = this.extractImageInfo(img, imgIdx, validImages.length);
           extractedData.push({
             type: 'image',
             fileCategory: 'image',
             isTurnRoot: imgIdx === 0, // only first image is turn root
-            display: label,
-            title: label,
-            className: 'gemiboost-toc-item gemiboost-toc-attachment',
+            fileType: imgInfo.fileType,
+            fileName: imgInfo.fileName,
+            display: imgInfo.display,
+            title: imgInfo.fileName || imgInfo.display,
+            isDefaultName: imgInfo.isDefaultName,
+            imageIndex: imgInfo.imageIndex,
+            totalImages: imgInfo.totalImages,
+            className: imgIdx === 0
+              ? 'gemiboost-toc-item'
+              : 'gemiboost-toc-item gemiboost-toc-attachment',
             queryIndex: index,
             subIndex: imgIdx,
             rawText: rawText
@@ -225,6 +223,100 @@ GemiBoost.Extractor = {
   // Semantic alias for extractFromDOM
   extractTOCItems: function () {
     return this.extractFromDOM();
+  },
+
+  // Extract clean image info, resolving true filename if present, or human-friendly label
+  extractImageInfo: function (img, imgIdx, totalImages) {
+    const isPlaceholder = (val) => {
+      if (!val || typeof val !== 'string') return true;
+      const clean = val.trim().toLowerCase();
+      return (
+        !clean ||
+        clean === 'uploaded image preview' ||
+        clean === 'uploaded image' ||
+        clean === 'image preview' ||
+        clean === 'preview image' ||
+        clean === 'preview' ||
+        clean === 'image' ||
+        clean === '[image]' ||
+        clean === '上传的图片预览' ||
+        clean === '上传的图片' ||
+        clean === '图片预览' ||
+        clean === '图片' ||
+        clean.startsWith('view image') ||
+        clean.startsWith('remove image') ||
+        clean.startsWith('delete image')
+      );
+    };
+
+    // 1. Look for explicit real filename on img or its container hierarchy
+    let realName = '';
+    const candidates = [
+      img.getAttribute('data-filename'),
+      img.getAttribute('data-name'),
+      img.title,
+      img.alt
+    ];
+
+    const container = img.closest(
+      '.file-preview-container, [class*="file-preview"], [class*="image-preview"], [class*="preview"], [role="group"]'
+    );
+    if (container) {
+      candidates.push(
+        container.getAttribute('data-filename'),
+        container.getAttribute('data-name'),
+        container.title,
+        container.getAttribute('aria-label')
+      );
+
+      // Button inside container (e.g. view full screen or remove)
+      const btn = container.querySelector('button[aria-label]');
+      if (btn) {
+        const btnLabel = btn.getAttribute('aria-label');
+        if (btnLabel && !isPlaceholder(btnLabel)) {
+          // If aria-label looks like "Remove 000217.png" or "000217.png"
+          const match = btnLabel.match(/([^\s\/\\:*\?"<>|]+\.[a-zA-Z0-9]{2,5})/);
+          if (match) candidates.push(match[1]);
+          else candidates.push(btnLabel);
+        }
+      }
+    }
+
+    for (const cand of candidates) {
+      if (cand && !isPlaceholder(cand)) {
+        let cleaned = cand.replace(/^(remove|delete|view)\s+/i, '').trim();
+        if (cleaned && !isPlaceholder(cleaned)) {
+          realName = cleaned;
+          break;
+        }
+      }
+    }
+
+    // Determine extension and tag
+    let fileType = 'IMG';
+    if (realName) {
+      const extMatch = realName.match(/\.([a-zA-Z0-9]+)$/);
+      if (extMatch) {
+        fileType = extMatch[1].toUpperCase();
+      }
+    }
+
+    const isDefaultName = !realName;
+    const isChinese = (typeof document !== 'undefined' && document.documentElement?.lang?.toLowerCase().startsWith('zh')) ||
+      (typeof navigator !== 'undefined' && navigator.language?.toLowerCase().startsWith('zh'));
+    const defaultWord = isChinese ? '图片' : 'Image';
+    const baseLabel = totalImages > 1 ? `${defaultWord} ${imgIdx + 1}` : defaultWord;
+    const displayLabel = realName ? `[${fileType}] ${realName}` : `[IMG] ${baseLabel}`;
+
+    return {
+      fileName: realName || (totalImages > 1 ? `Image ${imgIdx + 1}` : 'Image'),
+      fileType: fileType,
+      fileCategory: 'image',
+      display: displayLabel,
+      isDefaultName: isDefaultName,
+      imageIndex: imgIdx,
+      totalImages: totalImages
+    };
   },
 
   // Classify file type into one of 9 granular categories (or fallback 'file')
@@ -303,8 +395,13 @@ GemiBoost.Extractor = {
       return !(parentFile && parentFile.textContent && parentFile.textContent.trim());
     });
 
-    images.forEach(() => {
-      attachments.push('[Image]');
+    images.forEach((img, imgIdx) => {
+      const imgInfo = this.extractImageInfo(img, imgIdx, images.length);
+      if (!imgInfo.isDefaultName && imgInfo.fileName) {
+        attachments.push(`[${imgInfo.fileType || 'Image'}] ${imgInfo.fileName}`);
+      } else {
+        attachments.push(images.length > 1 ? `[Image ${imgIdx + 1}]` : '[Image]');
+      }
     });
 
     // C. Attached files & documents (strictly match genuine file preview containers)

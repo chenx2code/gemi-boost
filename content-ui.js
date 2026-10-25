@@ -51,7 +51,9 @@ GemiBoost.UI = {
   getStrings: function () {
     let isChinese = false;
     try {
-      if (typeof navigator !== 'undefined' && navigator.language) {
+      if (typeof document !== 'undefined' && document.documentElement && document.documentElement.lang) {
+        isChinese = document.documentElement.lang.toLowerCase().startsWith('zh');
+      } else if (typeof navigator !== 'undefined' && navigator.language) {
         isChinese = navigator.language.toLowerCase().startsWith('zh');
       }
       if (!isChinese && typeof chrome !== 'undefined' && chrome.runtime?.id && chrome.i18n?.getUILanguage) {
@@ -535,16 +537,38 @@ GemiBoost.UI = {
       }
 
       let displayContent = item.display || '';
-      if (item.type === 'image' && (displayContent === '[Image]' || !displayContent)) {
-        displayContent = strings.imageLabel;
+      if (item.type === 'image') {
+        const isPlaceholder = (val) => {
+          if (!val) return true;
+          const clean = val.trim().toLowerCase();
+          return (
+            clean === 'uploaded image preview' ||
+            clean === 'uploaded image' ||
+            clean === 'image preview' ||
+            clean === 'preview image' ||
+            clean === 'preview' ||
+            clean === 'image' ||
+            clean === '[image]' ||
+            clean === '图片' ||
+            clean === '上传的图片预览' ||
+            clean === '图片预览'
+          );
+        };
+
+        if (item.isDefaultName || isPlaceholder(displayContent) || !displayContent) {
+          const total = item.totalImages || 1;
+          const idx = item.imageIndex !== undefined ? item.imageIndex : (item.subIndex || 0);
+          const base = total > 1 ? `${strings.imageLabel} ${idx + 1}` : strings.imageLabel;
+          displayContent = `[IMG] ${base}`;
+        }
       }
 
-      if (item.type === 'file') {
+      if (item.type === 'file' || item.type === 'image') {
         const tagMatch = displayContent.match(/^(\[[^\]]+\])\s*(.*)$/);
         if (tagMatch) {
           const category = item.fileCategory || (GemiBoost.Extractor && GemiBoost.Extractor.detectFileCategory
             ? GemiBoost.Extractor.detectFileCategory(item.fileType, item.fileName)
-            : 'file');
+            : (item.type === 'image' ? 'image' : 'file'));
           const tagSpan = document.createElement('span');
           tagSpan.className = `gemiboost-type-tag gemiboost-type-tag-${category}`;
           tagSpan.textContent = tagMatch[1];
