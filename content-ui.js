@@ -543,11 +543,6 @@ GemiBoost.UI = {
       li.appendChild(content);
 
       li.addEventListener('click', () => {
-        // Highlight active item and indicate navigating flight
-        const allItems = list.querySelectorAll('.gemiboost-toc-item');
-        allItems.forEach((el) => el.classList.remove('is-active', 'is-navigating'));
-        li.classList.add('is-active', 'is-navigating');
-
         if (onItemClick) onItemClick(item);
       });
 
@@ -555,6 +550,7 @@ GemiBoost.UI = {
     });
 
     list.scrollTop = currentScrollTop;
+    this.updateActiveItem();
   },
 
   // Infer the global queryIndex of a given DOM query element by matching with TOC list
@@ -719,6 +715,8 @@ GemiBoost.UI = {
     }
 
     this._isNavigating = true;
+    const clickTime = performance.now();
+    const minFeedbackDurationMs = 380; // Ensure visible feedback even for 0px distance
 
     // 2. Update active highlight in the sidebar list immediately
     const list = document.getElementById(GemiBoost.Config.DOM_IDS.LIST);
@@ -726,20 +724,46 @@ GemiBoost.UI = {
       const allItems = list.querySelectorAll('.gemiboost-toc-item');
       allItems.forEach((el) => {
         const matchesQuery = String(item.queryIndex) === el.dataset.queryIndex;
-        const matchesSub = item.subIndex === undefined || String(item.subIndex) === el.dataset.subIndex;
-        if (matchesQuery && matchesSub) {
-          el.classList.add('is-active', 'is-navigating');
+        const elSub = el.dataset.subIndex || '';
+        const itemSub = item.subIndex !== undefined ? String(item.subIndex) : '';
+        const isExactTarget = matchesQuery && elSub === itemSub;
+        const isTurnRoot = matchesQuery && elSub === '';
+
+        // Active state: target item and its turn root badge are active
+        if (isExactTarget || isTurnRoot) {
+          el.classList.add('is-active');
         } else {
-          el.classList.remove('is-active', 'is-navigating');
+          el.classList.remove('is-active');
+        }
+
+        // Navigating flight background: ONLY the exact clicked row
+        if (isExactTarget) {
+          el.classList.add('is-navigating');
+        } else {
+          el.classList.remove('is-navigating');
         }
       });
     }
 
-    // Helper to fade away temporary navigation row background
-    const clearNavigatingState = () => {
-      if (list) {
-        const navItems = list.querySelectorAll('.gemiboost-toc-item.is-navigating');
-        navItems.forEach((el) => el.classList.remove('is-navigating'));
+    // Helper to fade away temporary navigation row background after minimum feedback time
+    const clearNavigatingState = (immediate = false) => {
+      const doClear = () => {
+        if (list) {
+          const navItems = list.querySelectorAll('.gemiboost-toc-item.is-navigating');
+          navItems.forEach((el) => el.classList.remove('is-navigating'));
+        }
+      };
+
+      if (immediate) {
+        doClear();
+      } else {
+        const elapsed = performance.now() - clickTime;
+        const remaining = Math.max(0, minFeedbackDurationMs - elapsed);
+        if (remaining > 0) {
+          setTimeout(doClear, remaining);
+        } else {
+          doClear();
+        }
       }
     };
 
@@ -748,11 +772,11 @@ GemiBoost.UI = {
       if (e.target && e.target.closest && e.target.closest('#gemiboost-toc-container')) {
         return; // Allow scrolling inside the sidebar itself
       }
-      cleanup();
+      cleanup(true);
     };
 
-    const cleanup = () => {
-      clearNavigatingState();
+    const cleanup = (immediate = false) => {
+      clearNavigatingState(immediate);
       if (this._cancelAnimation) {
         this._cancelAnimation();
         this._cancelAnimation = null;
@@ -789,9 +813,6 @@ GemiBoost.UI = {
       const duration = Math.min(520, Math.max(260, Math.round(200 + Math.sqrt(distance) * 4.2)));
 
       this._cancelAnimation = this.animateScrollTo(scroller, targetScrollTop, duration, () => {
-        // Clear navigating state so row background gently fades away upon arrival
-        clearNavigatingState();
-
         // Arrival check: micro-settle if layout shifted during flight
         const freshTarget = this.findTargetElement(item) || targetEl;
         const freshTargetRect = freshTarget.getBoundingClientRect();
@@ -801,12 +822,12 @@ GemiBoost.UI = {
           this._cancelAnimation = this.animateScrollTo(scroller, scroller.scrollTop + freshDelta, 140, () => {
             this.flashTargetElement(freshTarget);
             if (onUpdateCatalog) onUpdateCatalog();
-            cleanup();
+            cleanup(false);
           });
         } else {
           this.flashTargetElement(freshTarget);
           if (onUpdateCatalog) onUpdateCatalog();
-          cleanup();
+          cleanup(false);
         }
       });
     };
@@ -879,7 +900,7 @@ GemiBoost.UI = {
               this.flashTargetElement(fallbackEl);
             }
             if (onUpdateCatalog) onUpdateCatalog();
-            cleanup();
+            cleanup(false);
           }
         }, 80);
       }

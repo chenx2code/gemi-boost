@@ -331,10 +331,11 @@ body[data-theme="dark"],
   background-color: var(--gb-item-hover);
 }
 
-/* Temporary highlight during click navigation */
-.gemiboost-toc-item.is-navigating {
-  background-color: var(--gb-item-active-bg);
-  transition: none; /* Instant feedback on click, smooth fade on removal */
+/* Temporary highlight during click navigation - MUST override :hover and normal active */
+.gemiboost-toc-item.is-navigating,
+.gemiboost-toc-item.is-navigating:hover {
+  background-color: var(--gb-item-active-bg) !important;
+  transition: none !important; /* Instant feedback on click, smooth fade on removal */
 }
 
 /* Leading badge and icons */
