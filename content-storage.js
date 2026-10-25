@@ -25,6 +25,19 @@ GemiBoost.Storage = {
           this.clearChatCache(chatId);
           return callback(null);
         }
+        if (Array.isArray(cached.items)) {
+          // Auto-heal isTurnRoot if missing from legacy cached chats
+          let lastQueryIndex = null;
+          cached.items.forEach((it, idx) => {
+            if (typeof it.isTurnRoot !== 'boolean') {
+              const qIdx = it.queryIndex !== undefined ? it.queryIndex : idx;
+              it.isTurnRoot = (qIdx !== lastQueryIndex);
+            }
+            if (it.isTurnRoot) {
+              lastQueryIndex = it.queryIndex !== undefined ? it.queryIndex : idx;
+            }
+          });
+        }
         return callback(cached);
       }
       callback(null);
@@ -61,12 +74,15 @@ GemiBoost.Storage = {
       version: GemiBoost.Config.CACHE_VERSION,
       items: items.map((it) => ({
         type: it.type,
+        isTurnRoot: it.isTurnRoot !== false,
         display: it.display,
         title: it.title || '',
         className: it.className,
         queryIndex: it.queryIndex,
         subIndex: it.subIndex,
-        rawText: it.rawText || ''
+        rawText: it.rawText || '',
+        fileType: it.fileType || '',
+        fileName: it.fileName || ''
       })),
       isFullySynced: !!isFullySynced,
       updatedAt: Date.now()

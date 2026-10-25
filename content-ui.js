@@ -493,11 +493,17 @@ GemiBoost.UI = {
       const leading = document.createElement('div');
       leading.className = 'gemiboost-item-leading';
 
-      if (item.isTurnRoot) {
+      const isTurnRoot = typeof item.isTurnRoot === 'boolean'
+        ? item.isTurnRoot
+        : (item.subIndex === undefined || item.subIndex === null);
+
+      if (isTurnRoot) {
+        li.dataset.isTurnRoot = 'true';
         const turnNum = typeof item.queryIndex === 'number' ? item.queryIndex + 1 : index + 1;
         const badgeStr = turnNum < 10 ? '0' + turnNum : String(turnNum);
         leading.innerHTML = `<span class="gemiboost-turn-badge">${badgeStr}</span>`;
       } else {
+        li.dataset.isTurnRoot = 'false';
         // Empty leading spacer providing exact indentation alignment with the turn badge above
         leading.innerHTML = '';
       }
@@ -719,7 +725,7 @@ GemiBoost.UI = {
         const elSub = el.dataset.subIndex || '';
         const itemSub = item.subIndex !== undefined ? String(item.subIndex) : '';
         const isExactTarget = matchesQuery && elSub === itemSub;
-        const isTurnRoot = matchesQuery && elSub === '';
+        const isTurnRoot = matchesQuery && (el.dataset.isTurnRoot === 'true' || elSub === '');
 
         // Active state: target item and its turn root badge are active
         if (isExactTarget || isTurnRoot) {
