@@ -132,6 +132,19 @@ GemiBoost.App = {
 
     const finalItems = mergeResult.items;
 
+    // Synchronize canonical queryIndex back onto live DOM nodes to align with virtualized cache
+    const livePrompts = Array.from(document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY));
+    const turnRoots = finalItems.filter((it) => it.isTurnRoot !== false);
+    livePrompts.forEach((promptEl) => {
+      const text = GemiBoost.Utils ? GemiBoost.Utils.getCleanPromptText(promptEl) : '';
+      if (text) {
+        const match = turnRoots.find((t) => t.rawText === text);
+        if (match && typeof match.queryIndex === 'number') {
+          promptEl.dataset.gbQueryIndex = String(match.queryIndex);
+        }
+      }
+    });
+
     if (finalItems.length === 0) {
       if (this.lastQueryCount === 0 && this.lastSignature === 'empty') return;
       this.lastQueryCount = 0;
