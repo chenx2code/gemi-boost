@@ -7,29 +7,82 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <div class="settings-card">
-    <h2 class="settings-title">Settings</h2>
-    <hr class="settings-divider">
+  <div class="popup-container">
+    <!-- Header: Product branding and version -->
+    <header class="popup-header">
+      <div class="brand">
+        <img class="brand-icon" src="icons/icon32.png" alt="GemiBoost" width="22" height="22">
+        <span class="brand-name">GemiBoost</span>
+      </div>
+      <span class="version-chip" id="versionChip">v1.1.8</span>
+    </header>
 
-    <div class="settings-list">
-      <!-- Toggle 1: Include original conversation link -->
-      <label class="setting-item" for="includeLink">
-        <span class="toggle-switch">
-          <input type="checkbox" id="includeLink">
-          <span class="slider"></span>
-        </span>
-        <span class="setting-label">Include original conversation link</span>
-      </label>
+    <!-- Main Content: Settings options -->
+    <main class="popup-main">
+      <div class="section-header">
+        <span class="section-title" id="sectionTitle">Export Preferences</span>
+      </div>
 
-      <!-- Toggle 2: Include account email -->
-      <label class="setting-item" for="includeAccount">
-        <span class="toggle-switch">
-          <input type="checkbox" id="includeAccount">
-          <span class="slider"></span>
-        </span>
-        <span class="setting-label">Include account email</span>
-      </label>
-    </div>
+      <div class="settings-card">
+        <!-- Option 1: Original conversation link -->
+        <label class="setting-row" for="includeLink">
+          <div class="setting-leading-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+              <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/>
+            </svg>
+          </div>
+          <div class="setting-info">
+            <span class="setting-title" id="linkTitle">Include conversation link</span>
+            <span class="setting-desc" id="linkDesc">Add original chat link to Markdown export</span>
+          </div>
+          <div class="switch-container">
+            <input type="checkbox" id="includeLink" class="m3-switch-input">
+            <div class="m3-switch-track">
+              <div class="m3-switch-thumb">
+                <svg class="m3-switch-check" viewBox="0 0 24 24" width="11" height="11">
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </label>
+
+        <div class="row-divider"></div>
+
+        <!-- Option 2: Account email -->
+        <label class="setting-row" for="includeAccount">
+          <div class="setting-leading-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
+            </svg>
+          </div>
+          <div class="setting-info">
+            <span class="setting-title" id="accountTitle">Include account email</span>
+            <span class="setting-desc" id="accountDesc">Add Google account email to Markdown header</span>
+          </div>
+          <div class="switch-container">
+            <input type="checkbox" id="includeAccount" class="m3-switch-input">
+            <div class="m3-switch-track">
+              <div class="m3-switch-thumb">
+                <svg class="m3-switch-check" viewBox="0 0 24 24" width="11" height="11">
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </label>
+      </div>
+    </main>
+
+    <!-- Footer: Auto-save status feedback -->
+    <footer class="popup-footer">
+      <div class="status-indicator" id="statusIndicator">
+        <svg class="status-icon" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+          <path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/>
+        </svg>
+        <span class="status-text" id="statusText">Changes saved automatically</span>
+      </div>
+    </footer>
   </div>
 
   <script src="content-config.js"></script>
