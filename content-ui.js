@@ -603,29 +603,12 @@ GemiBoost.UI = {
 
   // Extract and clean raw prompt text from a query DOM node, stripping hidden screen reader labels
   getCleanPromptText: function (queryEl) {
-    if (GemiBoost.Utils && GemiBoost.Utils.getCleanPromptText) {
-      return GemiBoost.Utils.getCleanPromptText(queryEl);
-    }
-    if (!queryEl) return '';
-    const textNode = queryEl.querySelector(GemiBoost.Config.SELECTORS.QUERY_TEXT) || queryEl;
-    let text = textNode.textContent ? textNode.textContent.trim() : '';
-    const hiddenLabel = queryEl.querySelector(GemiBoost.Config.SELECTORS.HIDDEN_LABEL);
-    if (hiddenLabel && hiddenLabel.textContent) {
-      const hiddenText = hiddenLabel.textContent.trim();
-      if (text.startsWith(hiddenText)) {
-        text = text.substring(hiddenText.length).trim();
-      }
-    }
-    return text;
+    return GemiBoost.Utils ? GemiBoost.Utils.getCleanPromptText(queryEl) : '';
   },
 
   // Strip leading slash command or skill identifier (e.g. "/multi-subagent-search ")
   stripSlashCommand: function (text) {
-    if (GemiBoost.Utils && GemiBoost.Utils.stripSlashCommand) {
-      return GemiBoost.Utils.stripSlashCommand(text);
-    }
-    if (!text) return '';
-    return text.replace(/^\/[a-zA-Z0-9_\-\.]+\s*/, '').trim();
+    return GemiBoost.Utils ? GemiBoost.Utils.stripSlashCommand(text) : (text || '');
   },
 
   // Infer the global queryIndex of a given DOM query element by matching with TOC list

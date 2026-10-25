@@ -6,20 +6,7 @@ window.GemiBoost = window.GemiBoost || {};
 GemiBoost.Extractor = {
   // Extract and clean raw prompt text from a query DOM node, stripping hidden screen reader labels
   getCleanPromptText: function (promptEl) {
-    if (GemiBoost.Utils && GemiBoost.Utils.getCleanPromptText) {
-      return GemiBoost.Utils.getCleanPromptText(promptEl);
-    }
-    if (!promptEl) return '';
-    const textNode = promptEl.querySelector(GemiBoost.Config.SELECTORS.QUERY_TEXT) || promptEl;
-    let text = textNode.textContent ? textNode.textContent.trim() : '';
-    const hiddenLabel = promptEl.querySelector(GemiBoost.Config.SELECTORS.HIDDEN_LABEL);
-    if (hiddenLabel && hiddenLabel.textContent) {
-      const hiddenText = hiddenLabel.textContent.trim();
-      if (text.startsWith(hiddenText)) {
-        text = text.substring(hiddenText.length).trim();
-      }
-    }
-    return text;
+    return GemiBoost.Utils ? GemiBoost.Utils.getCleanPromptText(promptEl) : '';
   },
 
   // Extract structured prompt data items from the current live DOM for TOC navigation
@@ -355,25 +342,38 @@ GemiBoost.Extractor = {
         fileEl.querySelector('img[alt*="folder" i]') !== null;
       const hasFileExtension = /\.[a-zA-Z0-9]{2,5}($|\s)/.test(lower);
 
+      const lines = fileText.split('\n').map((l) => l.trim()).filter((l) => l);
+      const fName = lines.length > 1 ? lines[lines.length - 1] : lines[0];
+      const extMatch = fName.match(/\.([a-zA-Z0-9]+)$/);
+      const ext = extMatch ? extMatch[1].toUpperCase() : '';
+      const category = this.detectFileCategory(ext, fName, isFolder);
+
       if (isYouTube) {
         attachments.push('[YouTube Video]');
-      } else if (isAudio) {
-        attachments.push('[Audio File]');
-      } else if (isPdf) {
-        attachments.push('[PDF File]');
-      } else if (isMarkdown) {
-        attachments.push('[Markdown File]');
-      } else if (isFolder) {
-        const folderName = fileText.split('\n').map((l) => l.trim()).filter((l) => l).pop() || 'Folder';
+      } else if (category === 'folder') {
+        const folderName = fName || 'Folder';
         attachments.push(`[Folder] ${folderName}`);
-      } else if (isImageFile) {
+      } else if (category === 'audio') {
+        attachments.push(`[Audio] ${fName || 'Audio File'}`);
+      } else if (category === 'video') {
+        attachments.push(`[Video] ${fName || 'Video File'}`);
+      } else if (category === 'pdf') {
+        attachments.push(`[PDF] ${fName}`);
+      } else if (category === 'code') {
+        attachments.push(`[${ext || 'Code'}] ${fName}`);
+      } else if (category === 'table') {
+        attachments.push(`[${ext || 'Table'}] ${fName}`);
+      } else if (category === 'archive') {
+        attachments.push(`[${ext || 'Archive'}] ${fName}`);
+      } else if (category === 'text') {
+        attachments.push(`[${ext || 'Text'}] ${fName}`);
+      } else if (category === 'image' || isImageFile) {
         if (images.length === 0) {
           attachments.push('[Image]');
         }
       } else if (hasFileExtension || fileEl.matches(GemiBoost.Config.SELECTORS.FILE_CONTAINER)) {
-        // Genuine file attachment with a filename or inside a verified file container
-        if (fileText.length > 0 && fileText.length < 150) {
-          attachments.push('[Document]');
+        if (fName && fName.length < 150) {
+          attachments.push(`[${ext || 'Document'}] ${fName}`);
         }
       }
 
