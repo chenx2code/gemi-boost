@@ -82,6 +82,7 @@ GemiBoost.Storage = {
         subIndex: it.subIndex,
         rawText: it.rawText || '',
         fileType: it.fileType || '',
+        fileCategory: it.fileCategory || '',
         fileName: it.fileName || ''
       })),
       isFullySynced: !!isFullySynced,

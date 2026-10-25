@@ -63,9 +63,18 @@ GemiBoost.Extractor = {
           fullFileName = btn.getAttribute('aria-label');
         }
 
+        // Detect if container represents a Google Drive folder or directory
+        const isFolder =
+          (file.querySelector('mat-icon') && file.querySelector('mat-icon').textContent.trim().toLowerCase().includes('folder')) ||
+          file.querySelector('[aria-label*="folder" i]') !== null ||
+          file.querySelector('[class*="folder"]') !== null ||
+          file.querySelector('img[alt*="folder" i]') !== null;
+
         const extMatch = fullFileName.match(/\.([a-zA-Z0-9]+)$/);
         if (extMatch) {
           fileType = extMatch[1].toUpperCase();
+        } else if (isFolder) {
+          fileType = 'Folder';
         } else {
           const iconImg = file.querySelector('img[alt*="icon" i]');
           if (iconImg && iconImg.alt) {
@@ -76,7 +85,8 @@ GemiBoost.Extractor = {
           }
         }
 
-        fileInfoList.push({ fileName: fName, fileType: fileType, subIndex: fileIndex });
+        const fileCategory = this.detectFileCategory(fileType, fullFileName, isFolder);
+        fileInfoList.push({ fileName: fName, fileType: fileType, fileCategory: fileCategory, subIndex: fileIndex });
       });
 
       const hasImages = validImages.length > 0;
@@ -113,6 +123,7 @@ GemiBoost.Extractor = {
           }
           extractedData.push({
             type: 'image',
+            fileCategory: 'image',
             isTurnRoot: false,
             display: label,
             title: label,
@@ -127,6 +138,7 @@ GemiBoost.Extractor = {
           const displayLabel = `[${fInfo.fileType}] ${fInfo.fileName}`;
           extractedData.push({
             type: 'file',
+            fileCategory: fInfo.fileCategory,
             isTurnRoot: false,
             fileType: fInfo.fileType,
             fileName: fInfo.fileName,
@@ -151,6 +163,7 @@ GemiBoost.Extractor = {
           }
           extractedData.push({
             type: 'image',
+            fileCategory: 'image',
             isTurnRoot: imgIdx === 0, // only first image is turn root
             display: label,
             title: label,
@@ -165,6 +178,7 @@ GemiBoost.Extractor = {
           const displayLabel = `[${fInfo.fileType}] ${fInfo.fileName}`;
           extractedData.push({
             type: 'file',
+            fileCategory: fInfo.fileCategory,
             isTurnRoot: false,
             fileType: fInfo.fileType,
             fileName: fInfo.fileName,
@@ -182,6 +196,7 @@ GemiBoost.Extractor = {
           const displayLabel = `[${fInfo.fileType}] ${fInfo.fileName}`;
           extractedData.push({
             type: 'file',
+            fileCategory: fInfo.fileCategory,
             isTurnRoot: fIdx === 0, // only first file is turn root
             fileType: fInfo.fileType,
             fileName: fInfo.fileName,
@@ -213,6 +228,62 @@ GemiBoost.Extractor = {
   // Semantic alias for extractFromDOM
   extractTOCItems: function () {
     return this.extractFromDOM();
+  },
+
+  // Classify file type into one of 9 granular categories (or fallback 'file')
+  detectFileCategory: function (fileType, fileName, isFolder) {
+    if (isFolder || (fileType && fileType.toLowerCase() === 'folder')) {
+      return 'folder';
+    }
+
+    const ext = (fileType || '').toLowerCase();
+    const name = (fileName || '').toLowerCase();
+
+    if (ext === 'pdf' || name.endsWith('.pdf')) {
+      return 'pdf';
+    }
+
+    const codeExts = [
+      'py', 'js', 'ts', 'jsx', 'tsx', 'html', 'htm', 'css', 'scss', 'sass',
+      'json', 'yaml', 'yml', 'xml', 'sql', 'sh', 'bash', 'zsh', 'c', 'cpp',
+      'cc', 'cxx', 'h', 'hpp', 'java', 'go', 'rs', 'php', 'rb', 'swift',
+      'kt', 'kts', 'dart', 'scala', 'r', 'lua', 'vue', 'svelte'
+    ];
+    if (codeExts.includes(ext) || codeExts.some((ce) => name.endsWith('.' + ce))) {
+      return 'code';
+    }
+
+    const tableExts = ['csv', 'xlsx', 'xls', 'tsv', 'parquet', 'feather', 'ods'];
+    if (tableExts.includes(ext) || tableExts.some((te) => name.endsWith('.' + te))) {
+      return 'table';
+    }
+
+    const textExts = ['md', 'markdown', 'txt', 'rtf', 'log', 'doc', 'docx', 'odt', 'tex'];
+    if (textExts.includes(ext) || textExts.some((te) => name.endsWith('.' + te))) {
+      return 'text';
+    }
+
+    const audioExts = ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac', 'opus', 'wma'];
+    if (audioExts.includes(ext) || audioExts.some((ae) => name.endsWith('.' + ae)) || ext === 'audio') {
+      return 'audio';
+    }
+
+    const videoExts = ['mp4', 'mov', 'webm', 'mkv', 'avi', 'flv', 'wmv'];
+    if (videoExts.includes(ext) || videoExts.some((ve) => name.endsWith('.' + ve)) || ext === 'video' || ext === 'youtube') {
+      return 'video';
+    }
+
+    const archiveExts = ['zip', 'tar', 'gz', 'tgz', 'rar', '7z', 'bz2', 'xz'];
+    if (archiveExts.includes(ext) || archiveExts.some((ae) => name.endsWith('.' + ae))) {
+      return 'archive';
+    }
+
+    const imageExts = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp', 'ico', 'tiff'];
+    if (imageExts.includes(ext) || imageExts.some((ie) => name.endsWith('.' + ie)) || ext === 'image') {
+      return 'image';
+    }
+
+    return 'file';
   },
 
   // Extract structured user turn (text content and attached multimodal files)

@@ -280,7 +280,7 @@ GemiBoost.UI = {
   // Setup lightweight scroll spy for tracking active turn in chat
   setupScrollSpy: function () {
     if (this._scrollSpyBound) return;
-    const scroller = GemiBoost.Utils.getChatScrollContainer();
+    const scroller = GemiBoost.Utils && GemiBoost.Utils.getChatScrollContainer ? GemiBoost.Utils.getChatScrollContainer() : null;
     if (!scroller) return;
 
     this._scrollSpyBound = true;
@@ -296,7 +296,7 @@ GemiBoost.UI = {
     // Suppress scroll spy updates while active auto-navigation is in progress
     if (this._isNavigating) return;
 
-    const scroller = GemiBoost.Utils.getChatScrollContainer();
+    const scroller = GemiBoost.Utils && GemiBoost.Utils.getChatScrollContainer ? GemiBoost.Utils.getChatScrollContainer() : null;
     if (!scroller) return;
     const queries = Array.from(document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY));
     if (queries.length === 0) return;
@@ -520,21 +520,17 @@ GemiBoost.UI = {
         const imgIcon = document.createElement('span');
         imgIcon.className = 'gemiboost-inline-icon gemiboost-icon-image';
         imgIcon.title = strings.imageLabel;
-        imgIcon.innerHTML = `
-          <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
-            <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
-          </svg>
-        `;
+        imgIcon.innerHTML = this.getAttachmentIconSvg('image');
         textSpan.appendChild(imgIcon);
       } else if (item.type === 'file') {
+        const category = item.fileCategory || (GemiBoost.Extractor && GemiBoost.Extractor.detectFileCategory
+          ? GemiBoost.Extractor.detectFileCategory(item.fileType, item.fileName)
+          : 'file');
+
         const fileIcon = document.createElement('span');
-        fileIcon.className = 'gemiboost-inline-icon gemiboost-icon-file';
-        fileIcon.title = strings.fileLabel;
-        fileIcon.innerHTML = `
-          <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
-            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
-          </svg>
-        `;
+        fileIcon.className = `gemiboost-inline-icon gemiboost-icon-${category}`;
+        fileIcon.title = item.fileType || strings.fileLabel;
+        fileIcon.innerHTML = this.getAttachmentIconSvg(category);
         textSpan.appendChild(fileIcon);
       }
 
@@ -542,7 +538,26 @@ GemiBoost.UI = {
       if (item.type === 'image' && (displayContent === '[Image]' || !displayContent)) {
         displayContent = strings.imageLabel;
       }
-      textSpan.appendChild(document.createTextNode(displayContent));
+
+      if (item.type === 'file') {
+        const tagMatch = displayContent.match(/^(\[[^\]]+\])\s*(.*)$/);
+        if (tagMatch) {
+          const category = item.fileCategory || (GemiBoost.Extractor && GemiBoost.Extractor.detectFileCategory
+            ? GemiBoost.Extractor.detectFileCategory(item.fileType, item.fileName)
+            : 'file');
+          const tagSpan = document.createElement('span');
+          tagSpan.className = `gemiboost-type-tag gemiboost-type-tag-${category}`;
+          tagSpan.textContent = tagMatch[1];
+          textSpan.appendChild(tagSpan);
+          if (tagMatch[2]) {
+            textSpan.appendChild(document.createTextNode(' ' + tagMatch[2]));
+          }
+        } else {
+          textSpan.appendChild(document.createTextNode(displayContent));
+        }
+      } else {
+        textSpan.appendChild(document.createTextNode(displayContent));
+      }
       content.appendChild(textSpan);
 
       li.appendChild(leading);
@@ -557,6 +572,33 @@ GemiBoost.UI = {
 
     list.scrollTop = currentScrollTop;
     this.updateActiveItem();
+  },
+
+  // Get SVG markup for a given attachment category
+  getAttachmentIconSvg: function (category) {
+    switch (category) {
+      case 'folder':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>';
+      case 'code':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>';
+      case 'pdf':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9.5 8.5c0 .83-.67 1.5-1.5 1.5H7v2H5.5V8H8c.83 0 1.5.67 1.5 1.5v2zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V8H13c.83 0 1.5.67 1.5 1.5v4zm4-3.5H17v1h1.5v1.5H17v2h-1.5V8h3v1.5z"/></svg>';
+      case 'table':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM5 7h14v2H5V7zm0 4h6v8H5v-8zm14 8h-6v-8h6v8z"/></svg>';
+      case 'text':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>';
+      case 'audio':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>';
+      case 'video':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-10 12.5v-9l6 4.5-6 4.5z"/></svg>';
+      case 'archive':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 10h-2v-2h2v2zm0-4h-2v-2h2v2zm-2-4V6h2v2h-2z"/></svg>';
+      case 'image':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>';
+      case 'file':
+      default:
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>';
+    }
   },
 
   // Infer the global queryIndex of a given DOM query element by matching with TOC list
@@ -700,7 +742,7 @@ GemiBoost.UI = {
       return;
     }
 
-    const scroller = GemiBoost.Utils.getChatScrollContainer();
+    const scroller = GemiBoost.Utils && GemiBoost.Utils.getChatScrollContainer ? GemiBoost.Utils.getChatScrollContainer() : null;
     if (!scroller) return;
 
     // 1. Cancel any active animation and reset previous navigation state
