@@ -46,8 +46,17 @@ GemiBoost.UI = {
 
   // Get current active language strings
   getStrings: function () {
-    const isChinese = (navigator.language && navigator.language.startsWith('zh')) ||
-      (typeof chrome !== 'undefined' && chrome.i18n && chrome.i18n.getUILanguage && chrome.i18n.getUILanguage().startsWith('zh'));
+    let isChinese = false;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.language) {
+        isChinese = navigator.language.toLowerCase().startsWith('zh');
+      }
+      if (!isChinese && typeof chrome !== 'undefined' && chrome.runtime?.id && chrome.i18n?.getUILanguage) {
+        isChinese = chrome.i18n.getUILanguage().toLowerCase().startsWith('zh');
+      }
+    } catch (e) {
+      isChinese = (typeof navigator !== 'undefined' && navigator.language && navigator.language.toLowerCase().startsWith('zh')) || false;
+    }
     return isChinese ? I18N_UI.zh : I18N_UI.en;
   },
 

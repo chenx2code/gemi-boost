@@ -4,6 +4,15 @@
 window.GemiBoost = window.GemiBoost || {};
 
 GemiBoost.Storage = {
+  // Check if extension context is valid (not invalidated due to reload)
+  isContextValid: function () {
+    try {
+      return typeof chrome !== 'undefined' && !!chrome.runtime?.id && !!chrome.storage?.local;
+    } catch (e) {
+      return false;
+    }
+  },
+
   // Load cached chat TOC from chrome.storage.local or localStorage
   loadChatCache: function (chatId, callback) {
     if (!chatId) return callback(null);
@@ -21,10 +30,19 @@ GemiBoost.Storage = {
       callback(null);
     };
 
-    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-      chrome.storage.local.get([key], (res) => {
-        handleResult(res ? res[key] : null);
-      });
+    if (this.isContextValid()) {
+      try {
+        chrome.storage.local.get([key], (res) => {
+          handleResult(res ? res[key] : null);
+        });
+      } catch (e) {
+        try {
+          const raw = localStorage.getItem(key);
+          handleResult(raw ? JSON.parse(raw) : null);
+        } catch (err) {
+          callback(null);
+        }
+      }
     } else {
       try {
         const raw = localStorage.getItem(key);
@@ -54,8 +72,14 @@ GemiBoost.Storage = {
       updatedAt: Date.now()
     };
 
-    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-      chrome.storage.local.set({ [key]: data });
+    if (this.isContextValid()) {
+      try {
+        chrome.storage.local.set({ [key]: data });
+      } catch (e) {
+        try {
+          localStorage.setItem(key, JSON.stringify(data));
+        } catch (err) {}
+      }
     } else {
       try {
         localStorage.setItem(key, JSON.stringify(data));
@@ -70,10 +94,17 @@ GemiBoost.Storage = {
       return;
     }
     const key = `gemiboost_chat_${chatId}`;
-    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-      chrome.storage.local.remove([key], () => {
+    if (this.isContextValid()) {
+      try {
+        chrome.storage.local.remove([key], () => {
+          if (callback) callback();
+        });
+      } catch (e) {
+        try {
+          localStorage.removeItem(key);
+        } catch (err) {}
         if (callback) callback();
-      });
+      }
     } else {
       try {
         localStorage.removeItem(key);
@@ -185,19 +216,28 @@ GemiBoost.Storage = {
     const defaults = this.DEFAULT_EXPORT_SETTINGS;
     const key = this.STORAGE_KEY_SETTINGS;
 
-    if (typeof chrome !== 'undefined' && chrome.storage) {
-      const storage = chrome.storage.local || chrome.storage.sync;
-      storage.get([key, 'includeLink', 'includeAccount'], (res) => {
-        if (!res) return callback(defaults);
-        if (res[key] && typeof res[key] === 'object') {
-          return callback({ ...defaults, ...res[key] });
+    if (this.isContextValid()) {
+      try {
+        const storage = chrome.storage.local || chrome.storage.sync;
+        storage.get([key, 'includeLink', 'includeAccount'], (res) => {
+          if (!res) return callback(defaults);
+          if (res[key] && typeof res[key] === 'object') {
+            return callback({ ...defaults, ...res[key] });
+          }
+          const settings = {
+            includeLink: res.includeLink !== undefined ? !!res.includeLink : defaults.includeLink,
+            includeAccount: res.includeAccount !== undefined ? !!res.includeAccount : defaults.includeAccount
+          };
+          callback(settings);
+        });
+      } catch (e) {
+        try {
+          const raw = localStorage.getItem(key);
+          callback(raw ? { ...defaults, ...JSON.parse(raw) } : defaults);
+        } catch (err) {
+          callback(defaults);
         }
-        const settings = {
-          includeLink: res.includeLink !== undefined ? !!res.includeLink : defaults.includeLink,
-          includeAccount: res.includeAccount !== undefined ? !!res.includeAccount : defaults.includeAccount
-        };
-        callback(settings);
-      });
+      }
     } else {
       try {
         const raw = localStorage.getItem(key);
@@ -216,16 +256,23 @@ GemiBoost.Storage = {
       includeAccount: !!settings.includeAccount
     };
 
-    if (typeof chrome !== 'undefined' && chrome.storage) {
-      const storage = chrome.storage.local || chrome.storage.sync;
-      storage.set({ [key]: toSave, ...toSave }, () => {
-        if (chrome.storage.sync && storage !== chrome.storage.sync) {
-          try {
-            chrome.storage.sync.set({ [key]: toSave, ...toSave });
-          } catch (e) {}
-        }
+    if (this.isContextValid()) {
+      try {
+        const storage = chrome.storage.local || chrome.storage.sync;
+        storage.set({ [key]: toSave, ...toSave }, () => {
+          if (chrome.storage.sync && storage !== chrome.storage.sync) {
+            try {
+              chrome.storage.sync.set({ [key]: toSave, ...toSave });
+            } catch (e) {}
+          }
+          if (callback) callback();
+        });
+      } catch (e) {
+        try {
+          localStorage.setItem(key, JSON.stringify(toSave));
+        } catch (err) {}
         if (callback) callback();
-      });
+      }
     } else {
       try {
         localStorage.setItem(key, JSON.stringify(toSave));
