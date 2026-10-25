@@ -5,7 +5,8 @@ const CONFIG_SETTINGS = window.GemiBoost?.Config?.SETTINGS;
 const STORAGE_KEY = CONFIG_SETTINGS?.STORAGE_KEY || 'gemiboost_export_settings';
 const DEFAULT_SETTINGS = CONFIG_SETTINGS?.DEFAULTS || {
   includeLink: false,
-  includeAccount: false
+  includeAccount: false,
+  includeThinking: false
 };
 
 // UI localization strings
@@ -16,6 +17,8 @@ const I18N_STRINGS = {
     linkDesc: '导出 Markdown 时附带原始对话链接',
     accountTitle: '包含账号邮箱',
     accountDesc: '导出 Markdown 时附带当前账号信息',
+    thinkingTitle: '包含思考过程',
+    thinkingDesc: '导出 Task 模式或推理模型的思考链',
     autoSaveText: '更改已自动保存',
     savedFeedback: '设置已保存'
   },
@@ -25,6 +28,8 @@ const I18N_STRINGS = {
     linkDesc: 'Add original chat link to Markdown export',
     accountTitle: 'Include account email',
     accountDesc: 'Add Google account email to Markdown header',
+    thinkingTitle: 'Include thinking process',
+    thinkingDesc: 'Export Task and reasoning thoughts',
     autoSaveText: 'Changes saved automatically',
     savedFeedback: 'Settings saved'
   }
@@ -33,12 +38,15 @@ const I18N_STRINGS = {
 document.addEventListener('DOMContentLoaded', () => {
   const linkToggle = document.getElementById('includeLink');
   const accountToggle = document.getElementById('includeAccount');
+  const thinkingToggle = document.getElementById('includeThinking');
   const versionChip = document.getElementById('versionChip');
   const sectionTitle = document.getElementById('sectionTitle');
   const linkTitle = document.getElementById('linkTitle');
   const linkDesc = document.getElementById('linkDesc');
   const accountTitle = document.getElementById('accountTitle');
   const accountDesc = document.getElementById('accountDesc');
+  const thinkingTitle = document.getElementById('thinkingTitle');
+  const thinkingDesc = document.getElementById('thinkingDesc');
   const statusIndicator = document.getElementById('statusIndicator');
   const statusText = document.getElementById('statusText');
 
@@ -61,6 +69,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (linkDesc) linkDesc.textContent = strings.linkDesc;
   if (accountTitle) accountTitle.textContent = strings.accountTitle;
   if (accountDesc) accountDesc.textContent = strings.accountDesc;
+  if (thinkingTitle) thinkingTitle.textContent = strings.thinkingTitle;
+  if (thinkingDesc) thinkingDesc.textContent = strings.thinkingDesc;
   if (statusText) statusText.textContent = strings.autoSaveText;
 
   // Retrieve version dynamically from extension manifest
@@ -82,18 +92,20 @@ document.addEventListener('DOMContentLoaded', () => {
       : null;
 
   if (storage) {
-    storage.get([STORAGE_KEY, 'includeLink', 'includeAccount'], (res) => {
+    storage.get([STORAGE_KEY, 'includeLink', 'includeAccount', 'includeThinking'], (res) => {
       let settings = DEFAULT_SETTINGS;
       if (res && res[STORAGE_KEY] && typeof res[STORAGE_KEY] === 'object') {
         settings = { ...DEFAULT_SETTINGS, ...res[STORAGE_KEY] };
       } else if (res) {
         settings = {
           includeLink: res.includeLink !== undefined ? !!res.includeLink : DEFAULT_SETTINGS.includeLink,
-          includeAccount: res.includeAccount !== undefined ? !!res.includeAccount : DEFAULT_SETTINGS.includeAccount
+          includeAccount: res.includeAccount !== undefined ? !!res.includeAccount : DEFAULT_SETTINGS.includeAccount,
+          includeThinking: res.includeThinking !== undefined ? !!res.includeThinking : DEFAULT_SETTINGS.includeThinking
         };
       }
       if (linkToggle) linkToggle.checked = !!settings.includeLink;
       if (accountToggle) accountToggle.checked = !!settings.includeAccount;
+      if (thinkingToggle) thinkingToggle.checked = !!settings.includeThinking;
     });
   } else {
     try {
@@ -101,9 +113,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const items = raw ? JSON.parse(raw) : DEFAULT_SETTINGS;
       if (linkToggle) linkToggle.checked = !!items.includeLink;
       if (accountToggle) accountToggle.checked = !!items.includeAccount;
+      if (thinkingToggle) thinkingToggle.checked = !!items.includeThinking;
     } catch (e) {
       if (linkToggle) linkToggle.checked = DEFAULT_SETTINGS.includeLink;
       if (accountToggle) accountToggle.checked = DEFAULT_SETTINGS.includeAccount;
+      if (thinkingToggle) thinkingToggle.checked = DEFAULT_SETTINGS.includeThinking;
     }
   }
 
@@ -126,7 +140,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const saveSettings = () => {
     const newSettings = {
       includeLink: linkToggle ? linkToggle.checked : false,
-      includeAccount: accountToggle ? accountToggle.checked : false
+      includeAccount: accountToggle ? accountToggle.checked : false,
+      includeThinking: thinkingToggle ? thinkingToggle.checked : false
     };
 
     if (typeof chrome !== 'undefined' && chrome.storage) {
@@ -149,4 +164,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (linkToggle) linkToggle.addEventListener('change', saveSettings);
   if (accountToggle) accountToggle.addEventListener('change', saveSettings);
+  if (thinkingToggle) thinkingToggle.addEventListener('change', saveSettings);
 });

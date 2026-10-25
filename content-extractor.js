@@ -591,6 +591,16 @@ GemiBoost.Extractor = {
     const userPrompts = Array.from(document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY));
     const modelResponses = Array.from(document.querySelectorAll(GemiBoost.Config.SELECTORS.MODEL_RESPONSE));
 
+    let isChinese = false;
+    if (typeof document !== 'undefined' && document.documentElement?.lang) {
+      isChinese = document.documentElement.lang.toLowerCase().startsWith('zh');
+    } else if (typeof navigator !== 'undefined' && navigator.language) {
+      isChinese = navigator.language.toLowerCase().startsWith('zh');
+    } else {
+      isChinese = /[\u4e00-\u9fa5]/.test(title || '');
+    }
+    const markdownOptions = { ...settings, isChinese };
+
     const turns = [];
 
     userPrompts.forEach((promptEl, index) => {
@@ -600,7 +610,7 @@ GemiBoost.Extractor = {
       // 2. Find associated model response
       const modelEl = this.findAssociatedModelResponse(promptEl, index, modelResponses);
       const modelMarkdown = modelEl
-        ? (GemiBoost.Markdown ? GemiBoost.Markdown.elementToMarkdown(modelEl) : modelEl.textContent || '')
+        ? (GemiBoost.Markdown ? GemiBoost.Markdown.elementToMarkdown(modelEl, markdownOptions) : modelEl.textContent || '')
         : '';
 
       turns.push({

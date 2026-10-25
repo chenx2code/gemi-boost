@@ -5,25 +5,28 @@ window.GemiBoost = window.GemiBoost || {};
 
 GemiBoost.Markdown = {
   // Convert an HTML element (or tree) into clean, standard Markdown
-  elementToMarkdown: function (rootElement) {
+  elementToMarkdown: function (rootElement, options = {}) {
     if (!rootElement) return '';
 
     // Clone element to safely sanitize and isolate without affecting live DOM
     const clone = rootElement.cloneNode(true);
-    this.preprocessElement(clone);
+    this.preprocessElement(clone, options);
 
-    const rawMarkdown = this.serializeNode(clone);
+    const rawMarkdown = this.serializeNode(clone, options);
     return this.postprocessMarkdown(rawMarkdown);
   },
 
   // Remove UI noise elements (copy buttons, icons, visually-hidden labels) before serialization
-  preprocessElement: function (element) {
+  preprocessElement: function (element, options = {}) {
     // Selectors for elements that should not appear in the exported markdown
     const ignoredSelectors = [
       'button',
       '.cdk-visually-hidden',
       '[class*="visually-hidden"]',
       'mat-icon',
+      '.material-icons',
+      '.material-symbols-outlined',
+      '[class*="mat-icon"]',
       'svg:not(.katex svg)',
       '.copy-button',
       '.code-block-decoration button',
@@ -35,6 +38,16 @@ GemiBoost.Markdown = {
     ignoredSelectors.forEach((sel) => {
       element.querySelectorAll(sel).forEach((el) => el.remove());
     });
+
+    // If includeThinking is false (default), strip all thinking containers before serialization
+    if (!options.includeThinking) {
+      if (GemiBoost.Config?.SELECTORS?.THINKING_CONTAINER) {
+        element.querySelectorAll(GemiBoost.Config.SELECTORS.THINKING_CONTAINER).forEach((el) => el.remove());
+        if (element.matches?.(GemiBoost.Config.SELECTORS.THINKING_CONTAINER)) {
+          element.innerHTML = '';
+        }
+      }
+    }
   },
 
   // Recursively serialize a DOM node to Markdown
@@ -68,19 +81,36 @@ GemiBoost.Markdown = {
       return tex ? `$${tex}$` : '';
     }
 
-    // 4. Thinking process (Flash Thinking / Reasoning blocks)
+    // 4. Thinking process (Flash Thinking / Reasoning blocks / Task steps / Spark components)
     if (
       tagName === 'thinking-process' ||
+      tagName === 'spark-thinking-steps' ||
+      tagName === 'thinking-steps' ||
       el.matches?.(GemiBoost.Config.SELECTORS.THINKING_CONTAINER) ||
-      el.classList.contains('thinking-content')
+      el.classList.contains('thinking-content') ||
+      el.classList.contains('thought-container') ||
+      el.classList.contains('spark-thinking-container') ||
+      el.classList.contains('thinking-header')
     ) {
+      if (!context.includeThinking) {
+        return '';
+      }
+      if (context.isInsideThinking) {
+        return this.serializeChildren(el, context);
+      }
+      const isChinese = context.isChinese !== undefined
+        ? context.isChinese
+        : ((typeof document !== 'undefined' && document.documentElement?.lang?.toLowerCase().startsWith('zh')) || false);
+      const label = isChinese ? '思考过程' : 'Thought Process';
       const thinkingContent = this.serializeChildren(el, { ...context, isInsideThinking: true }).trim();
       if (!thinkingContent) return '';
       const quoted = thinkingContent
         .split('\n')
-        .map((line) => (line.trim() ? `> ${line}` : '>'))
+        .map((line) => line.trim())
+        .filter((line, idx, arr) => line || (idx > 0 && arr[idx - 1]))
+        .map((line) => (line ? `> ${line}` : '>'))
         .join('\n');
-      return `\n\n> **[Thought Process]**\n${quoted}\n\n`;
+      return `\n\n> 💭 **[${label}]**\n${quoted}\n\n`;
     }
 
     // 5. Code blocks (custom Gemini <code-block> or standard <pre><code>)
@@ -104,6 +134,11 @@ GemiBoost.Markdown = {
     if (tagName === 'p') {
       const content = this.serializeChildren(el, context).trim();
       return content ? `\n\n${content}\n\n` : '';
+    }
+
+    if (context.isInsideThinking && (tagName === 'div' || tagName === 'summary')) {
+      const content = this.serializeChildren(el, context).trim();
+      return content ? `\n${content}\n` : '';
     }
 
     // 9. Blockquotes
@@ -167,11 +202,24 @@ GemiBoost.Markdown = {
       return `[${text}](${href})`;
     }
 
-    // 14. Images
+    // 14. Images & UI Icons
     if (tagName === 'img') {
       const src = el.getAttribute('src') || '';
       const alt = el.getAttribute('alt') || 'image';
       if (!src) return '';
+
+      // Check if this image is a micro UI/branding/service/file icon
+      if (this.isUIIcon(el, context)) {
+        const emoji = this.getUIIconEmoji(el, context);
+        if (!emoji) return '';
+        const nextNode = el.nextSibling;
+        if (nextNode && nextNode.nodeType === Node.TEXT_NODE) {
+          // Collapse leading HTML indentation/newlines on the following text to keep icon inline
+          nextNode.nodeValue = nextNode.nodeValue.replace(/^[\r\n\t ]+/, '');
+        }
+        return `${emoji} `;
+      }
+
       return `![${alt}](${src})`;
     }
 
@@ -187,6 +235,150 @@ GemiBoost.Markdown = {
 
     // Default container traversal
     return this.serializeChildren(el, context);
+  },
+
+  // Detect if an <img> element is a small UI, branding, service, or file-type icon
+  isUIIcon: function (imgEl, context = {}) {
+    if (!imgEl) return false;
+
+    // 1. Explicit UI icon context (any image inside thinking process or chip/source is an icon)
+    if (
+      context.isInsideThinking ||
+      imgEl.closest?.(
+        'spark-thinking-steps, .spark-thinking-container, .thinking-header, [class*="chip"], [class*="badge"], [class*="source"], [class*="citation"]'
+      )
+    ) {
+      return true;
+    }
+
+    const src = (imgEl.getAttribute('src') || '').toLowerCase();
+    const alt = (imgEl.getAttribute('alt') || '').toLowerCase();
+    const className = (typeof imgEl.className === 'string' ? imgEl.className : '').toLowerCase();
+
+    // 2. High-confidence Google system icon and CDN fingerprints
+    if (
+      src.includes('gstatic.com/images/branding/productlogos/') ||
+      src.includes('gstatic.com/images/icons/') ||
+      src.includes('/images/branding/') ||
+      src.includes('drive-thirdparty.googleusercontent.com') ||
+      src.includes('/type/application/') ||
+      src.includes('/favicon') ||
+      src.includes('favicon.') ||
+      src.includes('productlogos')
+    ) {
+      return true;
+    }
+
+    // 3. Alt text indicating an icon or Google service
+    if (
+      alt.includes('icon') ||
+      alt.includes('logo') ||
+      alt.includes('google drive') ||
+      alt.includes('google docs') ||
+      alt.includes('google sheets') ||
+      alt.includes('google search')
+    ) {
+      return true;
+    }
+
+    // 4. Class name markers
+    if (
+      className.includes('icon') ||
+      className.includes('logo') ||
+      className.includes('favicon')
+    ) {
+      return true;
+    }
+
+    // 5. Size attribute checks (width/height <= 36)
+    const widthAttr = parseInt(imgEl.getAttribute('width') || '0', 10);
+    const heightAttr = parseInt(imgEl.getAttribute('height') || '0', 10);
+    if ((widthAttr > 0 && widthAttr <= 36) || (heightAttr > 0 && heightAttr <= 36)) {
+      return true;
+    }
+
+    // 6. Live element client dimension check (if available)
+    if (imgEl.clientWidth > 0 && imgEl.clientWidth <= 36) {
+      return true;
+    }
+
+    return false;
+  },
+
+  // Map recognized UI icon to a semantic Unicode Emoji
+  getUIIconEmoji: function (imgEl, context = {}) {
+    const src = (imgEl.getAttribute('src') || '').toLowerCase();
+    const alt = (imgEl.getAttribute('alt') || '').toLowerCase();
+    const fullHint = `${alt} ${src}`;
+
+    // A. Tables / Spreadsheets (Excel, Sheets, CSV)
+    if (/excel|sheet|spreadsheet|csv|xlsx|table|vnd\.openxmlformats-officedocument\.spreadsheetml/i.test(fullHint)) {
+      return '📊';
+    }
+
+    // B. Documents / Text / Word / PDF / Markdown
+    if (/pdf/i.test(fullHint)) {
+      return '📑';
+    }
+    if (/doc|word|text|txt|markdown|\.md|document/i.test(fullHint)) {
+      return '📄';
+    }
+
+    // C. Presentations / Slides
+    if (/slide|presentation|powerpoint|ppt/i.test(fullHint)) {
+      return '📑';
+    }
+
+    // D. Cloud Storage / Drive / Folders
+    if (/drive|folder|directory|cloud/i.test(fullHint)) {
+      return '📁';
+    }
+
+    // E. Search / Web / Browsing / Sources / Favicons
+    if (/search|web|google|globe|browse|query|favicon|source|citation/i.test(fullHint)) {
+      return '🔍';
+    }
+
+    // F. Skills / Tools / Agent / Code / Execution
+    if (/skill|tool|agent|code|terminal|subagent|python|bash|developer/i.test(fullHint)) {
+      return '🔧';
+    }
+
+    // G. Communication / Mail / Chat
+    if (/mail|gmail|message|chat/i.test(fullHint)) {
+      return '✉️';
+    }
+
+    // H. Media (Video, Audio, Image)
+    if (/video|youtube|movie|play/i.test(fullHint)) {
+      return '▶️';
+    }
+    if (/audio|music|sound|voice/i.test(fullHint)) {
+      return '🎵';
+    }
+    if (/image|photo|pic|gallery/i.test(fullHint)) {
+      return '🖼️';
+    }
+
+    // I. Calendar / Dates / Tasks
+    if (/calendar|event|date|time/i.test(fullHint)) {
+      return '📅';
+    }
+
+    // J. Fallback from parent/sibling text (e.g. file card with extension)
+    const parentText = (imgEl.parentElement?.textContent || '').toLowerCase();
+    if (/\.xlsx?($|\s)/i.test(parentText) || /\.csv($|\s)/i.test(parentText)) return '📊';
+    if (/\.pdf($|\s)/i.test(parentText)) return '📑';
+    if (/\.(md|txt|docx?)($|\s)/i.test(parentText)) return '📄';
+    if (/\.(py|js|ts|json|html|css|cpp|java)($|\s)/i.test(parentText)) return '💻';
+    if (/\.(zip|tar|gz|rar|7z)($|\s)/i.test(parentText)) return '📦';
+
+    if (context.isInsideThinking) {
+      return '🔹';
+    }
+
+    // Universal fallback for small icons
+    return '📎';
   },
 
   // Helper to serialize all child nodes of an element

@@ -27,7 +27,25 @@ GemiBoost.Config = {
     FILE_CONTAINER: '.file-preview-container, [class*="file-preview"]',
     MODEL_RESPONSE: 'model-response',
     MESSAGE_CONTENT: 'message-content, .model-response-text, .markdown',
-    THINKING_CONTAINER: 'thinking-process, [data-test-id="thinking-process"], details.thinking-process, .thinking-content',
+    THINKING_CONTAINER: [
+      'spark-thinking-steps',
+      '.spark-thinking-container',
+      '.thinking-header',
+      'thinking-process',
+      'thinking-steps',
+      '[class*="spark-thinking"]',
+      '[class*="thinking-container"]',
+      '[class*="thought-container"]',
+      '[class*="thinking-process"]',
+      '.thinking-content',
+      '.thought-content',
+      '[data-test-id*="thinking"]',
+      '[data-test-id*="thought"]',
+      'details.thinking-process',
+      'details.thought-container',
+      'details[class*="thinking"]',
+      'details[class*="thought"]'
+    ].join(', '),
     CODE_BLOCK: 'code-block, pre:has(code)',
     CODE_CONTAINER: '.code-container, pre',
     CODE_DECORATION: '.code-block-decoration',
@@ -71,7 +89,8 @@ GemiBoost.Config = {
     STORAGE_KEY: 'gemiboost_export_settings',
     DEFAULTS: {
       includeLink: false,
-      includeAccount: false
+      includeAccount: false,
+      includeThinking: false
     }
   }
 };
