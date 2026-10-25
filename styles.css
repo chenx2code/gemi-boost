@@ -373,6 +373,22 @@ body[data-theme="dark"],
   display: block;
 }
 
+.gemiboost-inline-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  margin-right: 5px;
+  vertical-align: -3px;
+  flex-shrink: 0;
+}
+
+.gemiboost-inline-icon svg {
+  display: block;
+}
+
 .gemiboost-icon-image {
   background-color: var(--gb-icon-image-bg);
   color: var(--gb-icon-image-color);

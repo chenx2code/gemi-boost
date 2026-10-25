@@ -461,44 +461,51 @@ GemiBoost.UI = {
       li.dataset.queryIndex = item.queryIndex !== undefined ? String(item.queryIndex) : '';
       if (item.title) li.title = item.title;
 
-      // 1. Leading visual element (Turn number badge or Attachment icon)
+      // 1. Leading turn number badge (every turn is numbered 01, 02, etc.)
       const leading = document.createElement('div');
       leading.className = 'gemiboost-item-leading';
 
-      if (item.type === 'image') {
-        leading.innerHTML = `
-          <span class="gemiboost-type-icon gemiboost-icon-image" title="${strings.imageLabel}">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
-              <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
-            </svg>
-          </span>
-        `;
-      } else if (item.type === 'file') {
-        leading.innerHTML = `
-          <span class="gemiboost-type-icon gemiboost-icon-file" title="${strings.fileLabel}">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
-              <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
-            </svg>
-          </span>
-        `;
-      } else {
-        const turnNum = typeof item.queryIndex === 'number' ? item.queryIndex + 1 : index + 1;
-        const badgeStr = turnNum < 10 ? '0' + turnNum : String(turnNum);
-        leading.innerHTML = `<span class="gemiboost-turn-badge">${badgeStr}</span>`;
-      }
+      const turnNum = typeof item.queryIndex === 'number' ? item.queryIndex + 1 : index + 1;
+      const badgeStr = turnNum < 10 ? '0' + turnNum : String(turnNum);
+      leading.innerHTML = `<span class="gemiboost-turn-badge">${badgeStr}</span>`;
 
-      // 2. Text Content Area
+      // 2. Text Content Area with optional inline attachment icons
       const content = document.createElement('div');
       content.className = 'gemiboost-item-content';
 
       const textSpan = document.createElement('span');
       textSpan.className = 'gemiboost-item-text';
 
+      // Insert attachment icon if this turn contains an image or file
+      if (item.hasImage || item.type === 'image' || item.type === 'image-text' || item.type === 'mixed-attachments') {
+        const imgIcon = document.createElement('span');
+        imgIcon.className = 'gemiboost-inline-icon gemiboost-icon-image';
+        imgIcon.title = strings.imageLabel;
+        imgIcon.innerHTML = `
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
+            <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+          </svg>
+        `;
+        textSpan.appendChild(imgIcon);
+      }
+
+      if (item.hasFile || item.type === 'file' || item.type === 'file-text' || item.type === 'mixed-attachments') {
+        const fileIcon = document.createElement('span');
+        fileIcon.className = 'gemiboost-inline-icon gemiboost-icon-file';
+        fileIcon.title = strings.fileLabel;
+        fileIcon.innerHTML = `
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
+            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+          </svg>
+        `;
+        textSpan.appendChild(fileIcon);
+      }
+
       let displayContent = item.display || '';
-      if (item.type === 'image' && displayContent === '[Image]') {
+      if (item.type === 'image' && (displayContent === '[Image]' || !displayContent)) {
         displayContent = strings.imageLabel;
       }
-      textSpan.textContent = displayContent;
+      textSpan.appendChild(document.createTextNode(displayContent));
       content.appendChild(textSpan);
 
       li.appendChild(leading);
@@ -589,7 +596,7 @@ GemiBoost.UI = {
 
   // Scroll to a specific sub-element (image/file) or user query block
   scrollToTargetElement: function (targetQuery, item) {
-    if (item.type === 'image') {
+    if (item.type === 'image' || (item.hasImage && !item.rawText)) {
       const validImgs = Array.from(targetQuery.querySelectorAll('img')).filter((img) => {
         if (img.classList.contains('user-icon') || (img.src && img.src.includes('googleusercontent.com/a/'))) {
           return false;
@@ -600,12 +607,12 @@ GemiBoost.UI = {
         }
         return true;
       });
-      const targetImg = validImgs[item.subIndex];
+      const targetImg = validImgs[item.subIndex || 0];
       if (targetImg) targetImg.scrollIntoView({ behavior: 'smooth', block: 'center' });
       else targetQuery.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    } else if (item.type === 'file') {
+    } else if (item.type === 'file' || (item.hasFile && !item.rawText)) {
       const files = targetQuery.querySelectorAll(GemiBoost.Config.SELECTORS.FILE_CONTAINER);
-      const targetFile = files[item.subIndex];
+      const targetFile = files[item.subIndex || 0];
       if (targetFile) targetFile.scrollIntoView({ behavior: 'smooth', block: 'center' });
       else targetQuery.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } else {

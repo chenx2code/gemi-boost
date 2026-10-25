@@ -29,7 +29,7 @@ GemiBoost.Extractor = {
       const fileTexts = new Set();
 
       // 2. Extract independent images (filter out user avatar and Google profile icons)
-      const images = Array.from(promptEl.querySelectorAll('img')).filter((img) => {
+      const validImages = Array.from(promptEl.querySelectorAll('img')).filter((img) => {
         if (img.classList.contains('user-icon') || (img.src && img.src.includes('googleusercontent.com/a/'))) {
           return false;
         }
@@ -40,27 +40,13 @@ GemiBoost.Extractor = {
         return true;
       });
 
-      images.forEach((img, imgIndex) => {
-        if (fileTexts.has(img.src)) return;
-        fileTexts.add(img.src);
-
-        extractedData.push({
-          type: 'image',
-          display: '[Image]',
-          className: 'gemiboost-toc-item gemiboost-toc-attachment',
-          queryIndex: index,
-          subIndex: imgIndex,
-          rawText: rawText
-        });
-      });
-
       // 3. Extract independent files
-      const files = Array.from(promptEl.querySelectorAll(GemiBoost.Config.SELECTORS.FILE_CONTAINER));
-      files.forEach((file, fileIndex) => {
-        const fileText = file.textContent ? file.textContent.trim() : '';
-        if (!fileText) return;
+      const rawFiles = Array.from(promptEl.querySelectorAll(GemiBoost.Config.SELECTORS.FILE_CONTAINER));
+      const fileInfoList = [];
 
-        if (fileTexts.has(fileText)) return;
+      rawFiles.forEach((file) => {
+        const fileText = file.textContent ? file.textContent.trim() : '';
+        if (!fileText || fileTexts.has(fileText)) return;
         fileTexts.add(fileText);
 
         if (text.includes(fileText)) {
@@ -87,42 +73,75 @@ GemiBoost.Extractor = {
             if (altType.length > 0 && altType.length <= 5) {
               fileType = altType;
             }
-          } else if (lines.length > 1) {
-            const possibleType = lines[0].toUpperCase();
-            if (possibleType.length > 0 && possibleType.length <= 5) {
-              fileType = possibleType;
-            }
           }
         }
 
-        extractedData.push({
-          type: 'file',
-          display: `[${fileType}] ` + (fName.length > 30 ? fName.substring(0, 30) + '...' : fName),
-          className: 'gemiboost-toc-item gemiboost-toc-attachment',
-          queryIndex: index,
-          subIndex: fileIndex,
-          rawText: rawText
-        });
+        fileInfoList.push({ fileName: fName, fileType: fileType });
       });
 
-      // 4. Extract remaining pure text
+      const hasImages = validImages.length > 0;
+      const hasFiles = fileInfoList.length > 0;
+
+      // 4. Structured single item per prompt turn
       if (text) {
-        const textPreview = text.length > 40 ? text.substring(0, 40) + '...' : text;
+        // A. Turn has text (may also include attachments)
+        const textPreview = text.length > 50 ? text.substring(0, 50) + '...' : text;
+        let itemType = 'text';
+        if (hasImages && hasFiles) itemType = 'mixed-attachments';
+        else if (hasImages) itemType = 'image-text';
+        else if (hasFiles) itemType = 'file-text';
+
         extractedData.push({
-          type: 'text',
+          type: itemType,
+          hasImage: hasImages,
+          hasFile: hasFiles,
+          fileType: hasFiles ? fileInfoList[0].fileType : '',
+          fileName: hasFiles ? fileInfoList[0].fileName : '',
           display: textPreview,
           title: text,
           className: 'gemiboost-toc-item',
           queryIndex: index,
           rawText: rawText
         });
-      }
-
-      // 5. Fallback if nothing was extracted
-      if (!text && images.length === 0 && files.length === 0) {
+      } else if (hasImages) {
+        // B. Turn is pure image (no text)
+        const imgLabel = validImages.length > 1 ? `[Image x${validImages.length}]` : '[Image]';
+        extractedData.push({
+          type: 'image',
+          hasImage: true,
+          hasFile: false,
+          display: imgLabel,
+          title: imgLabel,
+          className: 'gemiboost-toc-item gemiboost-toc-attachment',
+          queryIndex: index,
+          subIndex: 0,
+          rawText: rawText
+        });
+      } else if (hasFiles) {
+        // C. Turn is pure file (no text)
+        const firstFile = fileInfoList[0];
+        const displayLabel = `[${firstFile.fileType}] ${firstFile.fileName}`;
+        extractedData.push({
+          type: 'file',
+          hasImage: false,
+          hasFile: true,
+          fileType: firstFile.fileType,
+          fileName: firstFile.fileName,
+          display: displayLabel,
+          title: firstFile.fileName,
+          className: 'gemiboost-toc-item gemiboost-toc-attachment',
+          queryIndex: index,
+          subIndex: 0,
+          rawText: rawText
+        });
+      } else {
+        // D. Empty fallback
         extractedData.push({
           type: 'empty',
+          hasImage: false,
+          hasFile: false,
           display: '[Empty]',
+          title: '',
           className: 'gemiboost-toc-item',
           queryIndex: index,
           rawText: ''
