@@ -24,6 +24,9 @@ GemiBoost.Markdown = {
       '.cdk-visually-hidden',
       '[class*="visually-hidden"]',
       'mat-icon',
+      '.material-icons',
+      '.material-symbols-outlined',
+      '[class*="mat-icon"]',
       'svg:not(.katex svg)',
       '.copy-button',
       '.code-block-decoration button',
@@ -40,6 +43,9 @@ GemiBoost.Markdown = {
     if (!options.includeThinking) {
       if (GemiBoost.Config?.SELECTORS?.THINKING_CONTAINER) {
         element.querySelectorAll(GemiBoost.Config.SELECTORS.THINKING_CONTAINER).forEach((el) => el.remove());
+        if (element.matches?.(GemiBoost.Config.SELECTORS.THINKING_CONTAINER)) {
+          element.innerHTML = '';
+        }
       }
     }
   },
@@ -75,15 +81,22 @@ GemiBoost.Markdown = {
       return tex ? `$${tex}$` : '';
     }
 
-    // 4. Thinking process (Flash Thinking / Reasoning blocks / Task steps)
+    // 4. Thinking process (Flash Thinking / Reasoning blocks / Task steps / Spark components)
     if (
       tagName === 'thinking-process' ||
+      tagName === 'spark-thinking-steps' ||
+      tagName === 'thinking-steps' ||
       el.matches?.(GemiBoost.Config.SELECTORS.THINKING_CONTAINER) ||
       el.classList.contains('thinking-content') ||
-      el.classList.contains('thought-container')
+      el.classList.contains('thought-container') ||
+      el.classList.contains('spark-thinking-container') ||
+      el.classList.contains('thinking-header')
     ) {
       if (!context.includeThinking) {
         return '';
+      }
+      if (context.isInsideThinking) {
+        return this.serializeChildren(el, context);
       }
       const isChinese = context.isChinese !== undefined
         ? context.isChinese
@@ -93,7 +106,9 @@ GemiBoost.Markdown = {
       if (!thinkingContent) return '';
       const quoted = thinkingContent
         .split('\n')
-        .map((line) => (line.trim() ? `> ${line}` : '>'))
+        .map((line) => line.trim())
+        .filter((line, idx, arr) => line || (idx > 0 && arr[idx - 1]))
+        .map((line) => (line ? `> ${line}` : '>'))
         .join('\n');
       return `\n\n> 💭 **[${label}]**\n${quoted}\n\n`;
     }
@@ -119,6 +134,11 @@ GemiBoost.Markdown = {
     if (tagName === 'p') {
       const content = this.serializeChildren(el, context).trim();
       return content ? `\n\n${content}\n\n` : '';
+    }
+
+    if (context.isInsideThinking && (tagName === 'div' || tagName === 'summary')) {
+      const content = this.serializeChildren(el, context).trim();
+      return content ? `\n${content}\n` : '';
     }
 
     // 9. Blockquotes
