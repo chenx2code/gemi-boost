@@ -4,6 +4,11 @@
 window.GemiBoost = window.GemiBoost || {};
 
 GemiBoost.Extractor = {
+  // Extract and clean raw prompt text from a query DOM node, stripping hidden screen reader labels
+  getCleanPromptText: function (promptEl) {
+    return GemiBoost.Utils ? GemiBoost.Utils.getCleanPromptText(promptEl) : '';
+  },
+
   // Extract structured prompt data items from the current live DOM for TOC navigation
   extractFromDOM: function () {
     const userPrompts = document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY);
@@ -12,19 +17,11 @@ GemiBoost.Extractor = {
     const extractedData = [];
 
     userPrompts.forEach((promptEl, index) => {
+      // Stamp deterministic index onto DOM node for O(1) query identification
+      promptEl.dataset.gbQueryIndex = String(index);
+
       // 1. Text extraction using textContent to prevent empty string from off-screen / content-visibility
-      const textNode = promptEl.querySelector(GemiBoost.Config.SELECTORS.QUERY_TEXT) || promptEl;
-      let text = textNode.textContent ? textNode.textContent.trim() : '';
-
-      // Dynamically filter out hidden text intended for screen readers (e.g. "You said ", "你说了 ")
-      const hiddenLabel = promptEl.querySelector(GemiBoost.Config.SELECTORS.HIDDEN_LABEL);
-      if (hiddenLabel && hiddenLabel.textContent) {
-        const hiddenText = hiddenLabel.textContent.trim();
-        if (text.startsWith(hiddenText)) {
-          text = text.substring(hiddenText.length).trim();
-        }
-      }
-
+      let text = this.getCleanPromptText(promptEl);
       const rawText = text;
       const fileTexts = new Set();
 
@@ -63,9 +60,18 @@ GemiBoost.Extractor = {
           fullFileName = btn.getAttribute('aria-label');
         }
 
+        // Detect if container represents a Google Drive folder or directory
+        const isFolder =
+          (file.querySelector('mat-icon') && file.querySelector('mat-icon').textContent.trim().toLowerCase().includes('folder')) ||
+          file.querySelector('[aria-label*="folder" i]') !== null ||
+          file.querySelector('[class*="folder"]') !== null ||
+          file.querySelector('img[alt*="folder" i]') !== null;
+
         const extMatch = fullFileName.match(/\.([a-zA-Z0-9]+)$/);
         if (extMatch) {
           fileType = extMatch[1].toUpperCase();
+        } else if (isFolder) {
+          fileType = 'Folder';
         } else {
           const iconImg = file.querySelector('img[alt*="icon" i]');
           if (iconImg && iconImg.alt) {
@@ -76,7 +82,8 @@ GemiBoost.Extractor = {
           }
         }
 
-        fileInfoList.push({ fileName: fName, fileType: fileType, subIndex: fileIndex });
+        const fileCategory = this.detectFileCategory(fileType, fullFileName, isFolder);
+        fileInfoList.push({ fileName: fName, fileType: fileType, fileCategory: fileCategory, subIndex: fileIndex });
       });
 
       const hasImages = validImages.length > 0;
@@ -103,19 +110,18 @@ GemiBoost.Extractor = {
 
         // Attachments become subsequent rows in the same turn
         validImages.forEach((img, imgIdx) => {
-          let label = img.alt || img.title || '';
-          if (!label) {
-            const parent = img.closest('[aria-label]');
-            if (parent) label = parent.getAttribute('aria-label');
-          }
-          if (!label) {
-            label = validImages.length > 1 ? `[Image ${imgIdx + 1}]` : '[Image]';
-          }
+          const imgInfo = this.extractImageInfo(img, imgIdx, validImages.length);
           extractedData.push({
             type: 'image',
+            fileCategory: 'image',
             isTurnRoot: false,
-            display: label,
-            title: label,
+            fileType: imgInfo.fileType,
+            fileName: imgInfo.fileName,
+            display: imgInfo.display,
+            title: imgInfo.fileName || imgInfo.display,
+            isDefaultName: imgInfo.isDefaultName,
+            imageIndex: imgInfo.imageIndex,
+            totalImages: imgInfo.totalImages,
             className: 'gemiboost-toc-item gemiboost-toc-attachment',
             queryIndex: index,
             subIndex: imgIdx,
@@ -127,6 +133,7 @@ GemiBoost.Extractor = {
           const displayLabel = `[${fInfo.fileType}] ${fInfo.fileName}`;
           extractedData.push({
             type: 'file',
+            fileCategory: fInfo.fileCategory,
             isTurnRoot: false,
             fileType: fInfo.fileType,
             fileName: fInfo.fileName,
@@ -141,20 +148,21 @@ GemiBoost.Extractor = {
       } else if (hasImages) {
         // B. Turn is pure attachments starting with images (no text)
         validImages.forEach((img, imgIdx) => {
-          let label = img.alt || img.title || '';
-          if (!label) {
-            const parent = img.closest('[aria-label]');
-            if (parent) label = parent.getAttribute('aria-label');
-          }
-          if (!label) {
-            label = validImages.length > 1 ? `[Image ${imgIdx + 1}]` : '[Image]';
-          }
+          const imgInfo = this.extractImageInfo(img, imgIdx, validImages.length);
           extractedData.push({
             type: 'image',
+            fileCategory: 'image',
             isTurnRoot: imgIdx === 0, // only first image is turn root
-            display: label,
-            title: label,
-            className: 'gemiboost-toc-item gemiboost-toc-attachment',
+            fileType: imgInfo.fileType,
+            fileName: imgInfo.fileName,
+            display: imgInfo.display,
+            title: imgInfo.fileName || imgInfo.display,
+            isDefaultName: imgInfo.isDefaultName,
+            imageIndex: imgInfo.imageIndex,
+            totalImages: imgInfo.totalImages,
+            className: imgIdx === 0
+              ? 'gemiboost-toc-item'
+              : 'gemiboost-toc-item gemiboost-toc-attachment',
             queryIndex: index,
             subIndex: imgIdx,
             rawText: rawText
@@ -165,6 +173,7 @@ GemiBoost.Extractor = {
           const displayLabel = `[${fInfo.fileType}] ${fInfo.fileName}`;
           extractedData.push({
             type: 'file',
+            fileCategory: fInfo.fileCategory,
             isTurnRoot: false,
             fileType: fInfo.fileType,
             fileName: fInfo.fileName,
@@ -182,6 +191,7 @@ GemiBoost.Extractor = {
           const displayLabel = `[${fInfo.fileType}] ${fInfo.fileName}`;
           extractedData.push({
             type: 'file',
+            fileCategory: fInfo.fileCategory,
             isTurnRoot: fIdx === 0, // only first file is turn root
             fileType: fInfo.fileType,
             fileName: fInfo.fileName,
@@ -215,21 +225,160 @@ GemiBoost.Extractor = {
     return this.extractFromDOM();
   },
 
-  // Extract structured user turn (text content and attached multimodal files)
-  extractUserTurn: function (promptEl) {
-    // A. Text content
-    const textNode = promptEl.querySelector(GemiBoost.Config.SELECTORS.QUERY_TEXT) || promptEl;
-    let text = textNode.textContent ? textNode.textContent.trim() : '';
+  // Extract clean image info, resolving true filename if present, or human-friendly label
+  extractImageInfo: function (img, imgIdx, totalImages) {
+    const isPlaceholder = (val) => {
+      if (!val || typeof val !== 'string') return true;
+      const clean = val.trim().toLowerCase();
+      return (
+        !clean ||
+        clean === 'uploaded image preview' ||
+        clean === 'uploaded image' ||
+        clean === 'image preview' ||
+        clean === 'preview image' ||
+        clean === 'preview' ||
+        clean === 'image' ||
+        clean === '[image]' ||
+        clean === '上传的图片预览' ||
+        clean === '上传的图片' ||
+        clean === '图片预览' ||
+        clean === '图片' ||
+        clean.startsWith('view image') ||
+        clean.startsWith('remove image') ||
+        clean.startsWith('delete image')
+      );
+    };
 
-    // Strip hidden screen-reader labels ("You said ", "你说了 ")
-    const hiddenLabel = promptEl.querySelector(GemiBoost.Config.SELECTORS.HIDDEN_LABEL);
-    if (hiddenLabel && hiddenLabel.textContent) {
-      const hiddenText = hiddenLabel.textContent.trim();
-      if (text.startsWith(hiddenText)) {
-        text = text.substring(hiddenText.length).trim();
+    // 1. Look for explicit real filename on img or its container hierarchy
+    let realName = '';
+    const candidates = [
+      img.getAttribute('data-filename'),
+      img.getAttribute('data-name'),
+      img.title,
+      img.alt
+    ];
+
+    const container = img.closest(
+      '.file-preview-container, [class*="file-preview"], [class*="image-preview"], [class*="preview"], [role="group"]'
+    );
+    if (container) {
+      candidates.push(
+        container.getAttribute('data-filename'),
+        container.getAttribute('data-name'),
+        container.title,
+        container.getAttribute('aria-label')
+      );
+
+      // Button inside container (e.g. view full screen or remove)
+      const btn = container.querySelector('button[aria-label]');
+      if (btn) {
+        const btnLabel = btn.getAttribute('aria-label');
+        if (btnLabel && !isPlaceholder(btnLabel)) {
+          // If aria-label looks like "Remove 000217.png" or "000217.png"
+          const match = btnLabel.match(/([^\s\/\\:*\?"<>|]+\.[a-zA-Z0-9]{2,5})/);
+          if (match) candidates.push(match[1]);
+          else candidates.push(btnLabel);
+        }
       }
     }
 
+    for (const cand of candidates) {
+      if (cand && !isPlaceholder(cand)) {
+        let cleaned = cand.replace(/^(remove|delete|view)\s+/i, '').trim();
+        if (cleaned && !isPlaceholder(cleaned)) {
+          realName = cleaned;
+          break;
+        }
+      }
+    }
+
+    // Determine extension and tag
+    let fileType = 'IMG';
+    if (realName) {
+      const extMatch = realName.match(/\.([a-zA-Z0-9]+)$/);
+      if (extMatch) {
+        fileType = extMatch[1].toUpperCase();
+      }
+    }
+
+    const isDefaultName = !realName;
+    const isChinese = (typeof document !== 'undefined' && document.documentElement?.lang?.toLowerCase().startsWith('zh')) ||
+      (typeof navigator !== 'undefined' && navigator.language?.toLowerCase().startsWith('zh'));
+    const defaultWord = isChinese ? '图片' : 'Image';
+    const baseLabel = totalImages > 1 ? `${defaultWord} ${imgIdx + 1}` : defaultWord;
+    const displayLabel = realName ? `[${fileType}] ${realName}` : `[IMG] ${baseLabel}`;
+
+    return {
+      fileName: realName || (totalImages > 1 ? `Image ${imgIdx + 1}` : 'Image'),
+      fileType: fileType,
+      fileCategory: 'image',
+      display: displayLabel,
+      isDefaultName: isDefaultName,
+      imageIndex: imgIdx,
+      totalImages: totalImages
+    };
+  },
+
+  // Classify file type into one of 9 granular categories (or fallback 'file')
+  detectFileCategory: function (fileType, fileName, isFolder) {
+    if (isFolder || (fileType && fileType.toLowerCase() === 'folder')) {
+      return 'folder';
+    }
+
+    const ext = (fileType || '').toLowerCase();
+    const name = (fileName || '').toLowerCase();
+
+    if (ext === 'pdf' || name.endsWith('.pdf')) {
+      return 'pdf';
+    }
+
+    const codeExts = [
+      'py', 'js', 'ts', 'jsx', 'tsx', 'html', 'htm', 'css', 'scss', 'sass',
+      'json', 'yaml', 'yml', 'xml', 'sql', 'sh', 'bash', 'zsh', 'c', 'cpp',
+      'cc', 'cxx', 'h', 'hpp', 'java', 'go', 'rs', 'php', 'rb', 'swift',
+      'kt', 'kts', 'dart', 'scala', 'r', 'lua', 'vue', 'svelte'
+    ];
+    if (codeExts.includes(ext) || codeExts.some((ce) => name.endsWith('.' + ce))) {
+      return 'code';
+    }
+
+    const tableExts = ['csv', 'xlsx', 'xls', 'tsv', 'parquet', 'feather', 'ods'];
+    if (tableExts.includes(ext) || tableExts.some((te) => name.endsWith('.' + te))) {
+      return 'table';
+    }
+
+    const textExts = ['md', 'markdown', 'txt', 'rtf', 'log', 'doc', 'docx', 'odt', 'tex'];
+    if (textExts.includes(ext) || textExts.some((te) => name.endsWith('.' + te))) {
+      return 'text';
+    }
+
+    const audioExts = ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac', 'opus', 'wma'];
+    if (audioExts.includes(ext) || audioExts.some((ae) => name.endsWith('.' + ae)) || ext === 'audio') {
+      return 'audio';
+    }
+
+    const videoExts = ['mp4', 'mov', 'webm', 'mkv', 'avi', 'flv', 'wmv'];
+    if (videoExts.includes(ext) || videoExts.some((ve) => name.endsWith('.' + ve)) || ext === 'video' || ext === 'youtube') {
+      return 'video';
+    }
+
+    const archiveExts = ['zip', 'tar', 'gz', 'tgz', 'rar', '7z', 'bz2', 'xz'];
+    if (archiveExts.includes(ext) || archiveExts.some((ae) => name.endsWith('.' + ae))) {
+      return 'archive';
+    }
+
+    const imageExts = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp', 'ico', 'tiff'];
+    if (imageExts.includes(ext) || imageExts.some((ie) => name.endsWith('.' + ie)) || ext === 'image') {
+      return 'image';
+    }
+
+    return 'file';
+  },
+
+  // Extract structured user turn (text content and attached multimodal files)
+  extractUserTurn: function (promptEl) {
+    // A. Text content
+    let text = this.getCleanPromptText(promptEl);
     const attachments = [];
 
     // B. Images uploaded by user
@@ -246,8 +395,13 @@ GemiBoost.Extractor = {
       return !(parentFile && parentFile.textContent && parentFile.textContent.trim());
     });
 
-    images.forEach(() => {
-      attachments.push('[Image]');
+    images.forEach((img, imgIdx) => {
+      const imgInfo = this.extractImageInfo(img, imgIdx, images.length);
+      if (!imgInfo.isDefaultName && imgInfo.fileName) {
+        attachments.push(`[${imgInfo.fileType || 'Image'}] ${imgInfo.fileName}`);
+      } else {
+        attachments.push(images.length > 1 ? `[Image ${imgIdx + 1}]` : '[Image]');
+      }
     });
 
     // C. Attached files & documents (strictly match genuine file preview containers)
@@ -278,24 +432,45 @@ GemiBoost.Extractor = {
       const isPdf = /\.pdf($|\s)/i.test(lower);
       const isMarkdown = /\.(md|markdown)($|\s)/i.test(lower);
       const isImageFile = /\.(png|jpe?g|gif|webp|bmp|svg)($|\s)/i.test(lower);
+      const isFolder =
+        (fileEl.querySelector('mat-icon') && fileEl.querySelector('mat-icon').textContent.trim().toLowerCase().includes('folder')) ||
+        fileEl.querySelector('[aria-label*="folder" i]') !== null ||
+        fileEl.querySelector('[class*="folder"]') !== null ||
+        fileEl.querySelector('img[alt*="folder" i]') !== null;
       const hasFileExtension = /\.[a-zA-Z0-9]{2,5}($|\s)/.test(lower);
+
+      const lines = fileText.split('\n').map((l) => l.trim()).filter((l) => l);
+      const fName = lines.length > 1 ? lines[lines.length - 1] : lines[0];
+      const extMatch = fName.match(/\.([a-zA-Z0-9]+)$/);
+      const ext = extMatch ? extMatch[1].toUpperCase() : '';
+      const category = this.detectFileCategory(ext, fName, isFolder);
 
       if (isYouTube) {
         attachments.push('[YouTube Video]');
-      } else if (isAudio) {
-        attachments.push('[Audio File]');
-      } else if (isPdf) {
-        attachments.push('[PDF File]');
-      } else if (isMarkdown) {
-        attachments.push('[Markdown File]');
-      } else if (isImageFile) {
+      } else if (category === 'folder') {
+        const folderName = fName || 'Folder';
+        attachments.push(`[Folder] ${folderName}`);
+      } else if (category === 'audio') {
+        attachments.push(`[Audio] ${fName || 'Audio File'}`);
+      } else if (category === 'video') {
+        attachments.push(`[Video] ${fName || 'Video File'}`);
+      } else if (category === 'pdf') {
+        attachments.push(`[PDF] ${fName}`);
+      } else if (category === 'code') {
+        attachments.push(`[${ext || 'Code'}] ${fName}`);
+      } else if (category === 'table') {
+        attachments.push(`[${ext || 'Table'}] ${fName}`);
+      } else if (category === 'archive') {
+        attachments.push(`[${ext || 'Archive'}] ${fName}`);
+      } else if (category === 'text') {
+        attachments.push(`[${ext || 'Text'}] ${fName}`);
+      } else if (category === 'image' || isImageFile) {
         if (images.length === 0) {
           attachments.push('[Image]');
         }
       } else if (hasFileExtension || fileEl.matches(GemiBoost.Config.SELECTORS.FILE_CONTAINER)) {
-        // Genuine file attachment with a filename or inside a verified file container
-        if (fileText.length > 0 && fileText.length < 150) {
-          attachments.push('[Document]');
+        if (fName && fName.length < 150) {
+          attachments.push(`[${ext || 'Document'}] ${fName}`);
         }
       }
 

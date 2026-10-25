@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GemiBoost - Table of Contents for Gemini",
-  "version": "1.1.10",
+  "version": "1.1.11",
   "description": "A powerful table of contents and chat navigator for Google Gemini Web.",
   "permissions": [
     "storage"

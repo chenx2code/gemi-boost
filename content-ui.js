@@ -51,7 +51,9 @@ GemiBoost.UI = {
   getStrings: function () {
     let isChinese = false;
     try {
-      if (typeof navigator !== 'undefined' && navigator.language) {
+      if (typeof document !== 'undefined' && document.documentElement && document.documentElement.lang) {
+        isChinese = document.documentElement.lang.toLowerCase().startsWith('zh');
+      } else if (typeof navigator !== 'undefined' && navigator.language) {
         isChinese = navigator.language.toLowerCase().startsWith('zh');
       }
       if (!isChinese && typeof chrome !== 'undefined' && chrome.runtime?.id && chrome.i18n?.getUILanguage) {
@@ -280,7 +282,7 @@ GemiBoost.UI = {
   // Setup lightweight scroll spy for tracking active turn in chat
   setupScrollSpy: function () {
     if (this._scrollSpyBound) return;
-    const scroller = GemiBoost.Utils.getChatScrollContainer();
+    const scroller = GemiBoost.Utils && GemiBoost.Utils.getChatScrollContainer ? GemiBoost.Utils.getChatScrollContainer() : null;
     if (!scroller) return;
 
     this._scrollSpyBound = true;
@@ -296,7 +298,7 @@ GemiBoost.UI = {
     // Suppress scroll spy updates while active auto-navigation is in progress
     if (this._isNavigating) return;
 
-    const scroller = GemiBoost.Utils.getChatScrollContainer();
+    const scroller = GemiBoost.Utils && GemiBoost.Utils.getChatScrollContainer ? GemiBoost.Utils.getChatScrollContainer() : null;
     if (!scroller) return;
     const queries = Array.from(document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY));
     if (queries.length === 0) return;
@@ -520,29 +522,66 @@ GemiBoost.UI = {
         const imgIcon = document.createElement('span');
         imgIcon.className = 'gemiboost-inline-icon gemiboost-icon-image';
         imgIcon.title = strings.imageLabel;
-        imgIcon.innerHTML = `
-          <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
-            <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
-          </svg>
-        `;
+        imgIcon.innerHTML = this.getAttachmentIconSvg('image');
         textSpan.appendChild(imgIcon);
       } else if (item.type === 'file') {
+        const category = item.fileCategory || (GemiBoost.Extractor && GemiBoost.Extractor.detectFileCategory
+          ? GemiBoost.Extractor.detectFileCategory(item.fileType, item.fileName)
+          : 'file');
+
         const fileIcon = document.createElement('span');
-        fileIcon.className = 'gemiboost-inline-icon gemiboost-icon-file';
-        fileIcon.title = strings.fileLabel;
-        fileIcon.innerHTML = `
-          <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
-            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
-          </svg>
-        `;
+        fileIcon.className = `gemiboost-inline-icon gemiboost-icon-${category}`;
+        fileIcon.title = item.fileType || strings.fileLabel;
+        fileIcon.innerHTML = this.getAttachmentIconSvg(category);
         textSpan.appendChild(fileIcon);
       }
 
       let displayContent = item.display || '';
-      if (item.type === 'image' && (displayContent === '[Image]' || !displayContent)) {
-        displayContent = strings.imageLabel;
+      if (item.type === 'image') {
+        const isPlaceholder = (val) => {
+          if (!val) return true;
+          const clean = val.trim().toLowerCase();
+          return (
+            clean === 'uploaded image preview' ||
+            clean === 'uploaded image' ||
+            clean === 'image preview' ||
+            clean === 'preview image' ||
+            clean === 'preview' ||
+            clean === 'image' ||
+            clean === '[image]' ||
+            clean === '图片' ||
+            clean === '上传的图片预览' ||
+            clean === '图片预览'
+          );
+        };
+
+        if (item.isDefaultName || isPlaceholder(displayContent) || !displayContent) {
+          const total = item.totalImages || 1;
+          const idx = item.imageIndex !== undefined ? item.imageIndex : (item.subIndex || 0);
+          const base = total > 1 ? `${strings.imageLabel} ${idx + 1}` : strings.imageLabel;
+          displayContent = `[IMG] ${base}`;
+        }
       }
-      textSpan.appendChild(document.createTextNode(displayContent));
+
+      if (item.type === 'file' || item.type === 'image') {
+        const tagMatch = displayContent.match(/^(\[[^\]]+\])\s*(.*)$/);
+        if (tagMatch) {
+          const category = item.fileCategory || (GemiBoost.Extractor && GemiBoost.Extractor.detectFileCategory
+            ? GemiBoost.Extractor.detectFileCategory(item.fileType, item.fileName)
+            : (item.type === 'image' ? 'image' : 'file'));
+          const tagSpan = document.createElement('span');
+          tagSpan.className = `gemiboost-type-tag gemiboost-type-tag-${category}`;
+          tagSpan.textContent = tagMatch[1];
+          textSpan.appendChild(tagSpan);
+          if (tagMatch[2]) {
+            textSpan.appendChild(document.createTextNode(' ' + tagMatch[2]));
+          }
+        } else {
+          textSpan.appendChild(document.createTextNode(displayContent));
+        }
+      } else {
+        textSpan.appendChild(document.createTextNode(displayContent));
+      }
       content.appendChild(textSpan);
 
       li.appendChild(leading);
@@ -559,21 +598,95 @@ GemiBoost.UI = {
     this.updateActiveItem();
   },
 
+  // Get SVG markup for a given attachment category
+  getAttachmentIconSvg: function (category) {
+    switch (category) {
+      case 'folder':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>';
+      case 'code':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>';
+      case 'pdf':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9.5 8.5c0 .83-.67 1.5-1.5 1.5H7v2H5.5V8H8c.83 0 1.5.67 1.5 1.5v2zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V8H13c.83 0 1.5.67 1.5 1.5v4zm4-3.5H17v1h1.5v1.5H17v2h-1.5V8h3v1.5z"/></svg>';
+      case 'table':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM5 7h14v2H5V7zm0 4h6v8H5v-8zm14 8h-6v-8h6v8z"/></svg>';
+      case 'text':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>';
+      case 'audio':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>';
+      case 'video':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-10 12.5v-9l6 4.5-6 4.5z"/></svg>';
+      case 'archive':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 10h-2v-2h2v2zm0-4h-2v-2h2v2zm-2-4V6h2v2h-2z"/></svg>';
+      case 'image':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>';
+      case 'file':
+      default:
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>';
+    }
+  },
+
+  // Extract and clean raw prompt text from a query DOM node, stripping hidden screen reader labels
+  getCleanPromptText: function (queryEl) {
+    return GemiBoost.Utils ? GemiBoost.Utils.getCleanPromptText(queryEl) : '';
+  },
+
+  // Strip leading slash command or skill identifier (e.g. "/multi-subagent-search ")
+  stripSlashCommand: function (text) {
+    return GemiBoost.Utils ? GemiBoost.Utils.stripSlashCommand(text) : (text || '');
+  },
+
   // Infer the global queryIndex of a given DOM query element by matching with TOC list
   inferQueryIndex: function (queryEl) {
     if (!queryEl) return -1;
-    const textNode = queryEl.querySelector(GemiBoost.Config.SELECTORS.QUERY_TEXT) || queryEl;
-    const qText = textNode.textContent ? textNode.textContent.trim() : '';
+
+    // 0. Direct dataset attribute check (O(1))
+    if (queryEl.dataset && queryEl.dataset.gbQueryIndex !== undefined) {
+      const idx = parseInt(queryEl.dataset.gbQueryIndex, 10);
+      if (!isNaN(idx)) return idx;
+    }
+
+    const qText = this.getCleanPromptText(queryEl);
     if (!qText) return -1;
 
-    // 1. Fast in-memory lookup via cached items (avoids DOM traversals)
+    // 1. In-memory lookup via cached items
     if (this._items && this._items.length > 0) {
-      const qPrefix = qText.slice(0, 20);
+      // 1A. Exact full-text match
       for (const item of this._items) {
-        const itemText = item.rawText || item.title || item.display || '';
-        if (itemText && (qText.includes(itemText.slice(0, 20)) || itemText.includes(qPrefix))) {
+        if (item.rawText && item.rawText.trim() === qText.trim()) {
           if (typeof item.queryIndex === 'number') return item.queryIndex;
         }
+      }
+
+      // 1B. Payload match (stripping slash commands to prevent collision)
+      const qPayload = this.stripSlashCommand(qText);
+      if (qPayload && qPayload.length >= 3) {
+        for (const item of this._items) {
+          const itemPayload = this.stripSlashCommand(item.rawText || item.title || '');
+          if (itemPayload && itemPayload === qPayload) {
+            if (typeof item.queryIndex === 'number') return item.queryIndex;
+          }
+        }
+      }
+
+      // 1C. Best overlap match (scored, not short-circuited)
+      let bestItem = null;
+      let maxOverlap = 0;
+      for (const item of this._items) {
+        const itemPayload = this.stripSlashCommand(item.rawText || item.title || '');
+        if (qPayload && itemPayload) {
+          let overlap = 0;
+          const minLen = Math.min(qPayload.length, itemPayload.length);
+          while (overlap < minLen && qPayload[overlap] === itemPayload[overlap]) {
+            overlap++;
+          }
+          if (overlap > 15 && overlap > maxOverlap) {
+            maxOverlap = overlap;
+            bestItem = item;
+          }
+        }
+      }
+      if (bestItem && typeof bestItem.queryIndex === 'number') {
+        return bestItem.queryIndex;
       }
     }
 
@@ -584,7 +697,7 @@ GemiBoost.UI = {
     const items = list.querySelectorAll('.gemiboost-toc-item');
     for (const li of items) {
       const title = li.title || '';
-      if (title && (qText.includes(title.slice(0, 20)) || title.includes(qText.slice(0, 20)))) {
+      if (title && (title.trim() === qText.trim())) {
         const idx = parseInt(li.dataset.queryIndex, 10);
         if (!isNaN(idx)) return idx;
       }
@@ -594,30 +707,122 @@ GemiBoost.UI = {
 
   // Locate the target DOM element for a given TOC item (prompt container or specific attachment)
   findTargetElement: function (item) {
+    if (!item) return null;
     const queries = Array.from(document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY));
     if (queries.length === 0) return null;
 
     let targetQuery = null;
 
-    // 1. Precise text matching
-    if (item.rawText) {
-      targetQuery = queries.find((q) => {
-        const textNode = q.querySelector(GemiBoost.Config.SELECTORS.QUERY_TEXT) || q;
-        const qText = textNode.textContent.trim();
-        return qText.includes(item.rawText.slice(0, 20)) || item.rawText.includes(qText.slice(0, 20));
-      });
+    // Tier 1: Direct DOM dataset attribute match (O(1) exact query index match)
+    if (typeof item.queryIndex === 'number') {
+      const directEl = document.querySelector(`${GemiBoost.Config.SELECTORS.USER_QUERY}[data-gb-query-index="${item.queryIndex}"]`);
+      if (directEl) {
+        if (!item.rawText) {
+          targetQuery = directEl;
+        } else {
+          const directText = this.getCleanPromptText(directEl);
+          if (directText === item.rawText) {
+            targetQuery = directEl;
+          } else {
+            const directPayload = this.stripSlashCommand(directText);
+            const itemPayload = this.stripSlashCommand(item.rawText);
+            if (directPayload && itemPayload && directPayload === itemPayload) {
+              targetQuery = directEl;
+            }
+          }
+        }
+      }
     }
 
-    // 2. Index-based matching for pure attachments or fallback
-    if (!targetQuery && typeof item.queryIndex === 'number') {
-      targetQuery = queries.find((q) => this.inferQueryIndex(q) === item.queryIndex);
+    // Tier 2: Exact Full-Text Match (Cleaned)
+    if (!targetQuery && item.rawText) {
+      const targetText = item.rawText.trim();
+      const exactMatches = queries.filter((q) => {
+        const qText = this.getCleanPromptText(q);
+        return qText === targetText;
+      });
 
-      if (!targetQuery && item.queryIndex < queries.length) {
-        const candidate = queries[item.queryIndex];
-        const inferred = this.inferQueryIndex(candidate);
-        if (inferred === -1 || inferred === item.queryIndex) {
-          targetQuery = candidate;
+      if (exactMatches.length === 1) {
+        targetQuery = exactMatches[0];
+      } else if (exactMatches.length > 1) {
+        // Multiple identical queries (e.g. repeated "继续"): pick closest to item.queryIndex
+        let bestCandidate = exactMatches[0];
+        let minDiff = Infinity;
+        for (const candidate of exactMatches) {
+          const candidateIdx = queries.indexOf(candidate);
+          const diff = Math.abs(candidateIdx - (item.queryIndex || 0));
+          if (diff < minDiff) {
+            minDiff = diff;
+            bestCandidate = candidate;
+          }
         }
+        targetQuery = bestCandidate;
+      }
+    }
+
+    // Tier 3: Payload Text Match (Stripping Slash Command / Skill prefix)
+    if (!targetQuery && item.rawText) {
+      const itemPayload = this.stripSlashCommand(item.rawText);
+      if (itemPayload && itemPayload.length >= 3) {
+        const payloadMatches = queries.filter((q) => {
+          const qText = this.getCleanPromptText(q);
+          const qPayload = this.stripSlashCommand(qText);
+          return qPayload === itemPayload || (qPayload && qPayload.startsWith(itemPayload)) || (itemPayload.startsWith(qPayload));
+        });
+
+        if (payloadMatches.length === 1) {
+          targetQuery = payloadMatches[0];
+        } else if (payloadMatches.length > 1) {
+          let bestCandidate = payloadMatches[0];
+          let minDiff = Infinity;
+          for (const candidate of payloadMatches) {
+            const candidateIdx = queries.indexOf(candidate);
+            const diff = Math.abs(candidateIdx - (item.queryIndex || 0));
+            if (diff < minDiff) {
+              minDiff = diff;
+              bestCandidate = candidate;
+            }
+          }
+          targetQuery = bestCandidate;
+        }
+      }
+    }
+
+    // Tier 4: Long Prefix / Substring Match (Score-based, best match wins, NOT first match)
+    if (!targetQuery && item.rawText) {
+      const targetText = item.rawText.trim();
+      let bestCandidate = null;
+      let maxOverlap = 0;
+
+      for (const q of queries) {
+        const qText = this.getCleanPromptText(q);
+        if (!qText) continue;
+
+        const qPayload = this.stripSlashCommand(qText);
+        const itemPayload = this.stripSlashCommand(targetText);
+
+        if (qPayload && itemPayload) {
+          let overlap = 0;
+          const minLen = Math.min(qPayload.length, itemPayload.length);
+          while (overlap < minLen && qPayload[overlap] === itemPayload[overlap]) {
+            overlap++;
+          }
+          if (overlap > 10 && overlap > maxOverlap) {
+            maxOverlap = overlap;
+            bestCandidate = q;
+          }
+        }
+      }
+
+      if (bestCandidate) {
+        targetQuery = bestCandidate;
+      }
+    }
+
+    // Tier 5: Direct queryIndex fallback
+    if (!targetQuery && typeof item.queryIndex === 'number') {
+      if (item.queryIndex < queries.length) {
+        targetQuery = queries[item.queryIndex];
       }
     }
 
@@ -700,7 +905,7 @@ GemiBoost.UI = {
       return;
     }
 
-    const scroller = GemiBoost.Utils.getChatScrollContainer();
+    const scroller = GemiBoost.Utils && GemiBoost.Utils.getChatScrollContainer ? GemiBoost.Utils.getChatScrollContainer() : null;
     if (!scroller) return;
 
     // 1. Cancel any active animation and reset previous navigation state

@@ -30,8 +30,24 @@
   --gb-scrollbar-hover: #bdc1c6;
   --gb-icon-image-bg: #f3e8fd;
   --gb-icon-image-color: #7c3aed;
-  --gb-icon-file-bg: #e0f2fe;
-  --gb-icon-file-color: #0284c7;
+  --gb-icon-folder-bg: #fef9c3;
+  --gb-icon-folder-color: #ca8a04;
+  --gb-icon-code-bg: #dcfce7;
+  --gb-icon-code-color: #15803d;
+  --gb-icon-pdf-bg: #fee2e2;
+  --gb-icon-pdf-color: #b91c1c;
+  --gb-icon-table-bg: #ecfdf5;
+  --gb-icon-table-color: #047857;
+  --gb-icon-text-bg: #e0f2fe;
+  --gb-icon-text-color: #0369a1;
+  --gb-icon-audio-bg: #ffedd5;
+  --gb-icon-audio-color: #c2410c;
+  --gb-icon-video-bg: #fce7f3;
+  --gb-icon-video-color: #be185d;
+  --gb-icon-archive-bg: #fef3c7;
+  --gb-icon-archive-color: #92400e;
+  --gb-icon-file-bg: #f1f3f4;
+  --gb-icon-file-color: #444746;
   --gb-success-color: #137333;
   --gb-success-bg: #e6f4ea;
 }
@@ -64,8 +80,24 @@
     --gb-scrollbar-hover: #5f6368;
     --gb-icon-image-bg: rgba(218, 185, 255, 0.15);
     --gb-icon-image-color: #d8b4fe;
-    --gb-icon-file-bg: rgba(186, 230, 253, 0.15);
-    --gb-icon-file-color: #7dd3fc;
+    --gb-icon-folder-bg: rgba(254, 240, 138, 0.15);
+    --gb-icon-folder-color: #fde047;
+    --gb-icon-code-bg: rgba(187, 247, 208, 0.15);
+    --gb-icon-code-color: #4ade80;
+    --gb-icon-pdf-bg: rgba(254, 202, 202, 0.15);
+    --gb-icon-pdf-color: #f87171;
+    --gb-icon-table-bg: rgba(167, 243, 208, 0.15);
+    --gb-icon-table-color: #34d399;
+    --gb-icon-text-bg: rgba(186, 230, 253, 0.15);
+    --gb-icon-text-color: #7dd3fc;
+    --gb-icon-audio-bg: rgba(254, 215, 170, 0.15);
+    --gb-icon-audio-color: #fb923c;
+    --gb-icon-video-bg: rgba(251, 207, 232, 0.15);
+    --gb-icon-video-color: #f472b6;
+    --gb-icon-archive-bg: rgba(254, 243, 199, 0.15);
+    --gb-icon-archive-color: #fbbf24;
+    --gb-icon-file-bg: #2d2f31;
+    --gb-icon-file-color: #c4c7c5;
     --gb-success-color: #81c995;
     --gb-success-bg: rgba(129, 201, 149, 0.16);
   }
@@ -403,15 +435,32 @@ body[data-theme="dark"],
   display: block;
 }
 
-.gemiboost-icon-image {
-  background-color: var(--gb-icon-image-bg);
-  color: var(--gb-icon-image-color);
-}
+.gemiboost-icon-image { background-color: var(--gb-icon-image-bg); color: var(--gb-icon-image-color); }
+.gemiboost-icon-folder { background-color: var(--gb-icon-folder-bg); color: var(--gb-icon-folder-color); }
+.gemiboost-icon-code { background-color: var(--gb-icon-code-bg); color: var(--gb-icon-code-color); }
+.gemiboost-icon-pdf { background-color: var(--gb-icon-pdf-bg); color: var(--gb-icon-pdf-color); }
+.gemiboost-icon-table { background-color: var(--gb-icon-table-bg); color: var(--gb-icon-table-color); }
+.gemiboost-icon-text { background-color: var(--gb-icon-text-bg); color: var(--gb-icon-text-color); }
+.gemiboost-icon-audio { background-color: var(--gb-icon-audio-bg); color: var(--gb-icon-audio-color); }
+.gemiboost-icon-video { background-color: var(--gb-icon-video-bg); color: var(--gb-icon-video-color); }
+.gemiboost-icon-archive { background-color: var(--gb-icon-archive-bg); color: var(--gb-icon-archive-color); }
+.gemiboost-icon-file { background-color: var(--gb-icon-file-bg); color: var(--gb-icon-file-color); }
 
-.gemiboost-icon-file {
-  background-color: var(--gb-icon-file-bg);
-  color: var(--gb-icon-file-color);
+/* Dynamic Type Tags */
+.gemiboost-type-tag {
+  font-weight: 600;
+  margin-right: 4px;
 }
+.gemiboost-type-tag-folder { color: var(--gb-icon-folder-color); }
+.gemiboost-type-tag-image { color: var(--gb-icon-image-color); }
+.gemiboost-type-tag-code { color: var(--gb-icon-code-color); }
+.gemiboost-type-tag-pdf { color: var(--gb-icon-pdf-color); }
+.gemiboost-type-tag-table { color: var(--gb-icon-table-color); }
+.gemiboost-type-tag-text { color: var(--gb-icon-text-color); }
+.gemiboost-type-tag-audio { color: var(--gb-icon-audio-color); }
+.gemiboost-type-tag-video { color: var(--gb-icon-video-color); }
+.gemiboost-type-tag-archive { color: var(--gb-icon-archive-color); }
+.gemiboost-type-tag-file { color: var(--gb-icon-file-color); }
 
 /* Text Content Area */
 .gemiboost-item-content {
