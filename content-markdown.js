@@ -202,11 +202,24 @@ GemiBoost.Markdown = {
       return `[${text}](${href})`;
     }
 
-    // 14. Images
+    // 14. Images & UI Icons
     if (tagName === 'img') {
       const src = el.getAttribute('src') || '';
       const alt = el.getAttribute('alt') || 'image';
       if (!src) return '';
+
+      // Check if this image is a micro UI/branding/service/file icon
+      if (this.isUIIcon(el, context)) {
+        const emoji = this.getUIIconEmoji(el, context);
+        if (!emoji) return '';
+        const nextNode = el.nextSibling;
+        if (nextNode && nextNode.nodeType === Node.TEXT_NODE) {
+          // Collapse leading HTML indentation/newlines on the following text to keep icon inline
+          nextNode.nodeValue = nextNode.nodeValue.replace(/^[\r\n\t ]+/, '');
+        }
+        return `${emoji} `;
+      }
+
       return `![${alt}](${src})`;
     }
 
@@ -222,6 +235,150 @@ GemiBoost.Markdown = {
 
     // Default container traversal
     return this.serializeChildren(el, context);
+  },
+
+  // Detect if an <img> element is a small UI, branding, service, or file-type icon
+  isUIIcon: function (imgEl, context = {}) {
+    if (!imgEl) return false;
+
+    // 1. Explicit UI icon context (any image inside thinking process or chip/source is an icon)
+    if (
+      context.isInsideThinking ||
+      imgEl.closest?.(
+        'spark-thinking-steps, .spark-thinking-container, .thinking-header, [class*="chip"], [class*="badge"], [class*="source"], [class*="citation"]'
+      )
+    ) {
+      return true;
+    }
+
+    const src = (imgEl.getAttribute('src') || '').toLowerCase();
+    const alt = (imgEl.getAttribute('alt') || '').toLowerCase();
+    const className = (typeof imgEl.className === 'string' ? imgEl.className : '').toLowerCase();
+
+    // 2. High-confidence Google system icon and CDN fingerprints
+    if (
+      src.includes('gstatic.com/images/branding/productlogos/') ||
+      src.includes('gstatic.com/images/icons/') ||
+      src.includes('/images/branding/') ||
+      src.includes('drive-thirdparty.googleusercontent.com') ||
+      src.includes('/type/application/') ||
+      src.includes('/favicon') ||
+      src.includes('favicon.') ||
+      src.includes('productlogos')
+    ) {
+      return true;
+    }
+
+    // 3. Alt text indicating an icon or Google service
+    if (
+      alt.includes('icon') ||
+      alt.includes('logo') ||
+      alt.includes('google drive') ||
+      alt.includes('google docs') ||
+      alt.includes('google sheets') ||
+      alt.includes('google search')
+    ) {
+      return true;
+    }
+
+    // 4. Class name markers
+    if (
+      className.includes('icon') ||
+      className.includes('logo') ||
+      className.includes('favicon')
+    ) {
+      return true;
+    }
+
+    // 5. Size attribute checks (width/height <= 36)
+    const widthAttr = parseInt(imgEl.getAttribute('width') || '0', 10);
+    const heightAttr = parseInt(imgEl.getAttribute('height') || '0', 10);
+    if ((widthAttr > 0 && widthAttr <= 36) || (heightAttr > 0 && heightAttr <= 36)) {
+      return true;
+    }
+
+    // 6. Live element client dimension check (if available)
+    if (imgEl.clientWidth > 0 && imgEl.clientWidth <= 36) {
+      return true;
+    }
+
+    return false;
+  },
+
+  // Map recognized UI icon to a semantic Unicode Emoji
+  getUIIconEmoji: function (imgEl, context = {}) {
+    const src = (imgEl.getAttribute('src') || '').toLowerCase();
+    const alt = (imgEl.getAttribute('alt') || '').toLowerCase();
+    const fullHint = `${alt} ${src}`;
+
+    // A. Tables / Spreadsheets (Excel, Sheets, CSV)
+    if (/excel|sheet|spreadsheet|csv|xlsx|table|vnd\.openxmlformats-officedocument\.spreadsheetml/i.test(fullHint)) {
+      return '📊';
+    }
+
+    // B. Documents / Text / Word / PDF / Markdown
+    if (/pdf/i.test(fullHint)) {
+      return '📑';
+    }
+    if (/doc|word|text|txt|markdown|\.md|document/i.test(fullHint)) {
+      return '📄';
+    }
+
+    // C. Presentations / Slides
+    if (/slide|presentation|powerpoint|ppt/i.test(fullHint)) {
+      return '📑';
+    }
+
+    // D. Cloud Storage / Drive / Folders
+    if (/drive|folder|directory|cloud/i.test(fullHint)) {
+      return '📁';
+    }
+
+    // E. Search / Web / Browsing / Sources / Favicons
+    if (/search|web|google|globe|browse|query|favicon|source|citation/i.test(fullHint)) {
+      return '🔍';
+    }
+
+    // F. Skills / Tools / Agent / Code / Execution
+    if (/skill|tool|agent|code|terminal|subagent|python|bash|developer/i.test(fullHint)) {
+      return '🔧';
+    }
+
+    // G. Communication / Mail / Chat
+    if (/mail|gmail|message|chat/i.test(fullHint)) {
+      return '✉️';
+    }
+
+    // H. Media (Video, Audio, Image)
+    if (/video|youtube|movie|play/i.test(fullHint)) {
+      return '▶️';
+    }
+    if (/audio|music|sound|voice/i.test(fullHint)) {
+      return '🎵';
+    }
+    if (/image|photo|pic|gallery/i.test(fullHint)) {
+      return '🖼️';
+    }
+
+    // I. Calendar / Dates / Tasks
+    if (/calendar|event|date|time/i.test(fullHint)) {
+      return '📅';
+    }
+
+    // J. Fallback from parent/sibling text (e.g. file card with extension)
+    const parentText = (imgEl.parentElement?.textContent || '').toLowerCase();
+    if (/\.xlsx?($|\s)/i.test(parentText) || /\.csv($|\s)/i.test(parentText)) return '📊';
+    if (/\.pdf($|\s)/i.test(parentText)) return '📑';
+    if (/\.(md|txt|docx?)($|\s)/i.test(parentText)) return '📄';
+    if (/\.(py|js|ts|json|html|css|cpp|java)($|\s)/i.test(parentText)) return '💻';
+    if (/\.(zip|tar|gz|rar|7z)($|\s)/i.test(parentText)) return '📦';
+
+    if (context.isInsideThinking) {
+      return '🔹';
+    }
+
+    // Universal fallback for small icons
+    return '📎';
   },
 
   // Helper to serialize all child nodes of an element
