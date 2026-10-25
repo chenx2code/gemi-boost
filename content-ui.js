@@ -640,16 +640,8 @@ GemiBoost.UI = {
     return targetQuery;
   },
 
-  // Highlight target element briefly with a gentle pulse upon arrival
-  flashTargetElement: function (targetEl) {
-    if (!targetEl) return;
-    targetEl.classList.remove('gemiboost-target-highlight');
-    void targetEl.offsetWidth; // Force CSS reflow
-    targetEl.classList.add('gemiboost-target-highlight');
-    setTimeout(() => {
-      targetEl.classList.remove('gemiboost-target-highlight');
-    }, 1600);
-  },
+  // Standalone target flash helper (deprecated; visual state is cleanly indicated by the sidebar badge)
+  flashTargetElement: function () {},
 
   // Hardware-synchronized 60fps/120fps ease-out cubic scroll animation
   animateScrollTo: function (scroller, targetTop, duration, onComplete) {
@@ -820,12 +812,10 @@ GemiBoost.UI = {
 
         if (Math.abs(freshDelta) > 15) {
           this._cancelAnimation = this.animateScrollTo(scroller, scroller.scrollTop + freshDelta, 140, () => {
-            this.flashTargetElement(freshTarget);
             if (onUpdateCatalog) onUpdateCatalog();
             cleanup(false);
           });
         } else {
-          this.flashTargetElement(freshTarget);
           if (onUpdateCatalog) onUpdateCatalog();
           cleanup(false);
         }
@@ -894,11 +884,6 @@ GemiBoost.UI = {
           if (finalFound) {
             landOnTarget(finalFound);
           } else {
-            const fallbackQueries = document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY);
-            if (fallbackQueries.length > 0) {
-              const fallbackEl = scrollUp ? fallbackQueries[0] : fallbackQueries[fallbackQueries.length - 1];
-              this.flashTargetElement(fallbackEl);
-            }
             if (onUpdateCatalog) onUpdateCatalog();
             cleanup(false);
           }
