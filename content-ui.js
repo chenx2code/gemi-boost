@@ -43,6 +43,8 @@ const I18N_UI = {
 
 GemiBoost.UI = {
   _scrollSpyBound: false,
+  _navController: null,
+  _isNavigating: false,
 
   // Get current active language strings
   getStrings: function () {
@@ -290,24 +292,31 @@ GemiBoost.UI = {
 
   // Highlight TOC item corresponding to current viewport position
   updateActiveItem: function () {
+    // Suppress scroll spy updates while active auto-navigation is in progress
+    if (this._isNavigating) return;
+
     const scroller = GemiBoost.Utils.getChatScrollContainer();
     if (!scroller) return;
     const queries = Array.from(document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY));
     if (queries.length === 0) return;
 
     const scrollerRect = scroller.getBoundingClientRect();
-    let activeIndex = -1;
+    let activeQuery = null;
 
     for (let i = 0; i < queries.length; i++) {
       const rect = queries[i].getBoundingClientRect();
       if (rect.top <= scrollerRect.top + 250) {
-        activeIndex = i;
+        activeQuery = queries[i];
       } else {
         break;
       }
     }
 
-    if (activeIndex === -1 && queries.length > 0) activeIndex = 0;
+    if (!activeQuery && queries.length > 0) activeQuery = queries[0];
+    if (!activeQuery) return;
+
+    const activeIndex = this.inferQueryIndex(activeQuery);
+    if (activeIndex === -1) return;
 
     const list = document.getElementById(GemiBoost.Config.DOM_IDS.LIST);
     if (!list) return;
@@ -541,89 +550,58 @@ GemiBoost.UI = {
     list.scrollTop = currentScrollTop;
   },
 
-  // Navigate and scroll to a specific prompt or attachment
-  navigateToItem: function (item, onUpdateCatalog) {
-    if (GemiBoost.Sync && GemiBoost.Sync.isCurrentlySyncing()) {
-      return;
-    }
+  // Infer the global queryIndex of a given DOM query element by matching with TOC list
+  inferQueryIndex: function (queryEl) {
+    if (!queryEl) return -1;
+    const textNode = queryEl.querySelector(GemiBoost.Config.SELECTORS.QUERY_TEXT) || queryEl;
+    const qText = textNode.textContent ? textNode.textContent.trim() : '';
 
-    let targetQuery = null;
-    if (!item.isOffDOM && typeof item.queryIndex === 'number') {
-      const queries = document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY);
-      if (item.queryIndex < queries.length) {
-        targetQuery = queries[item.queryIndex];
+    const list = document.getElementById(GemiBoost.Config.DOM_IDS.LIST);
+    if (!list) return -1;
+
+    const items = list.querySelectorAll('.gemiboost-toc-item');
+    for (const li of items) {
+      const title = li.title || li.textContent;
+      if (qText && title && (qText.includes(title.slice(0, 20)) || title.includes(qText.slice(0, 20)))) {
+        const idx = parseInt(li.dataset.queryIndex, 10);
+        if (!isNaN(idx)) return idx;
       }
     }
-
-    // Verify targetQuery matches item text if text is present
-    if (targetQuery && item.rawText) {
-      const qText = (
-        targetQuery.querySelector(GemiBoost.Config.SELECTORS.QUERY_TEXT) || targetQuery
-      ).textContent.trim();
-      if (!qText.includes(item.rawText.slice(0, 15))) {
-        targetQuery = null;
-      }
-    }
-
-    // Fallback: search all current DOM queries
-    if (!targetQuery) {
-      const queries = Array.from(document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY));
-      if (item.rawText) {
-        targetQuery = queries.find((q) => {
-          const textNode = q.querySelector(GemiBoost.Config.SELECTORS.QUERY_TEXT) || q;
-          return textNode.textContent.trim().includes(item.rawText.slice(0, 20));
-        });
-      } else if (typeof item.queryIndex === 'number' && item.queryIndex < queries.length) {
-        targetQuery = queries[item.queryIndex];
-      }
-    }
-
-    if (targetQuery) {
-      this.scrollToTargetElement(targetQuery, item);
-      return;
-    }
-
-    // If turn is not currently rendered in virtual scroller, scroll up to trigger loading
-    const scroller = GemiBoost.Utils.getChatScrollContainer();
-    if (!scroller) return;
-
-    scroller.scrollTop = 0;
-    scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
-
-    let attempts = 0;
-    const maxAttempts = GemiBoost.Config.TIMING.NAVIGATE_SCROLL_MAX_ATTEMPTS;
-    const retryInterval = GemiBoost.Config.TIMING.NAVIGATE_SCROLL_RETRY_MS;
-
-    const interval = setInterval(() => {
-      attempts++;
-      const queries = Array.from(document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY));
-      const found = queries.find((q) => {
-        if (item.rawText) {
-          const textNode = q.querySelector(GemiBoost.Config.SELECTORS.QUERY_TEXT) || q;
-          return textNode.textContent.trim().includes(item.rawText.slice(0, 20));
-        }
-        if (item.type === 'image') {
-          return q.querySelector('img:not(.user-icon)') !== null;
-        }
-        if (item.type === 'file') {
-          return q.querySelector(GemiBoost.Config.SELECTORS.FILE_CONTAINER) !== null;
-        }
-        return false;
-      });
-
-      if (found) {
-        clearInterval(interval);
-        this.scrollToTargetElement(found, item);
-        if (onUpdateCatalog) onUpdateCatalog();
-      } else if (attempts >= maxAttempts) {
-        clearInterval(interval);
-        scroller.scrollTop = 0;
-      }
-    }, retryInterval);
+    return -1;
   },
 
-  // Scroll to a specific sub-element (image/file) or user query block
-  scrollToTargetElement: function (targetQuery, item) {
+  // Locate the target DOM element for a given TOC item (prompt container or specific attachment)
+  findTargetElement: function (item) {
+    const queries = Array.from(document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY));
+    if (queries.length === 0) return null;
+
+    let targetQuery = null;
+
+    // 1. Precise text matching
+    if (item.rawText) {
+      targetQuery = queries.find((q) => {
+        const textNode = q.querySelector(GemiBoost.Config.SELECTORS.QUERY_TEXT) || q;
+        const qText = textNode.textContent.trim();
+        return qText.includes(item.rawText.slice(0, 20)) || item.rawText.includes(qText.slice(0, 20));
+      });
+    }
+
+    // 2. Index-based matching for pure attachments or fallback
+    if (!targetQuery && typeof item.queryIndex === 'number') {
+      targetQuery = queries.find((q) => this.inferQueryIndex(q) === item.queryIndex);
+
+      if (!targetQuery && item.queryIndex < queries.length) {
+        const candidate = queries[item.queryIndex];
+        const inferred = this.inferQueryIndex(candidate);
+        if (inferred === -1 || inferred === item.queryIndex) {
+          targetQuery = candidate;
+        }
+      }
+    }
+
+    if (!targetQuery) return null;
+
+    // Resolve sub-element for image or file attachments
     if (item.type === 'image') {
       const validImgs = Array.from(targetQuery.querySelectorAll('img')).filter((img) => {
         if (img.classList.contains('user-icon') || (img.src && img.src.includes('googleusercontent.com/a/'))) {
@@ -635,16 +613,199 @@ GemiBoost.UI = {
         }
         return true;
       });
-      const targetImg = validImgs[item.subIndex || 0];
-      if (targetImg) targetImg.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      else targetQuery.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    } else if (item.type === 'file') {
-      const files = targetQuery.querySelectorAll(GemiBoost.Config.SELECTORS.FILE_CONTAINER);
-      const targetFile = files[item.subIndex || 0];
-      if (targetFile) targetFile.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      else targetQuery.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    } else {
-      targetQuery.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return validImgs[item.subIndex || 0] || targetQuery;
     }
+
+    if (item.type === 'file') {
+      const files = targetQuery.querySelectorAll(GemiBoost.Config.SELECTORS.FILE_CONTAINER);
+      return files[item.subIndex || 0] || targetQuery;
+    }
+
+    return targetQuery;
+  },
+
+  // Highlight target element briefly with a gentle pulse upon arrival
+  flashTargetElement: function (targetEl) {
+    if (!targetEl) return;
+    targetEl.classList.remove('gemiboost-target-highlight');
+    void targetEl.offsetWidth; // Force CSS reflow
+    targetEl.classList.add('gemiboost-target-highlight');
+    setTimeout(() => {
+      targetEl.classList.remove('gemiboost-target-highlight');
+    }, 1600);
+  },
+
+  // Active progressive auto-navigation controller: reliably cruises to any distance in a single click
+  navigateToItem: function (item, onUpdateCatalog) {
+    if (GemiBoost.Sync && GemiBoost.Sync.isCurrentlySyncing()) {
+      return;
+    }
+
+    const scroller = GemiBoost.Utils.getChatScrollContainer();
+    if (!scroller) return;
+
+    // Cancel any previous in-flight navigation loop
+    if (this._navController) {
+      this._navController.abort();
+    }
+
+    const ac = new AbortController();
+    this._navController = ac;
+    this._isNavigating = true;
+
+    // Update active highlight in the sidebar list immediately
+    const list = document.getElementById(GemiBoost.Config.DOM_IDS.LIST);
+    if (list) {
+      const allItems = list.querySelectorAll('.gemiboost-toc-item');
+      allItems.forEach((el) => {
+        const matchesQuery = String(item.queryIndex) === el.dataset.queryIndex;
+        const matchesSub = item.subIndex === undefined || String(item.subIndex) === el.dataset.subIndex;
+        if (matchesQuery && matchesSub) {
+          el.classList.add('is-active');
+        } else {
+          el.classList.remove('is-active');
+        }
+      });
+    }
+
+    const cleanup = () => {
+      ac.abort();
+      this._isNavigating = false;
+      if (this._navController === ac) {
+        this._navController = null;
+      }
+      window.removeEventListener('wheel', onUserInterrupt, { capture: true });
+      window.removeEventListener('touchstart', onUserInterrupt, { capture: true });
+      window.removeEventListener('keydown', onUserInterrupt, { capture: true });
+    };
+
+    // User manual interrupt handler (mouse wheel, touch or keydown cancel auto-navigation)
+    const onUserInterrupt = (e) => {
+      if (e.target && e.target.closest && e.target.closest('#gemiboost-toc-container')) {
+        return;
+      }
+      cleanup();
+    };
+
+    window.addEventListener('wheel', onUserInterrupt, { capture: true, passive: true });
+    window.addEventListener('touchstart', onUserInterrupt, { capture: true, passive: true });
+    window.addEventListener('keydown', onUserInterrupt, { capture: true, passive: true });
+
+    const startTime = Date.now();
+    const maxDuration = 6000; // 6s timeout safeguard
+    let lastScrollTop = scroller.scrollTop;
+    let stuckCount = 0;
+
+    const cruiseStep = () => {
+      if (ac.signal.aborted) return;
+
+      if (Date.now() - startTime > maxDuration) {
+        cleanup();
+        return;
+      }
+
+      const targetEl = this.findTargetElement(item);
+
+      if (targetEl) {
+        // Target is rendered in the DOM: progressive precision landing
+        const targetRect = targetEl.getBoundingClientRect();
+        const scrollerRect = scroller.getBoundingClientRect();
+
+        const isAttachment = item.type === 'image' || item.type === 'file';
+        const desiredTop = isAttachment
+          ? Math.max(80, (scrollerRect.height - targetRect.height) / 2)
+          : 80;
+
+        const delta = (targetRect.top - scrollerRect.top) - desiredTop;
+
+        // Arrival condition: within 15px of desired position
+        if (Math.abs(delta) <= 15) {
+          this.flashTargetElement(targetEl);
+          if (onUpdateCatalog) onUpdateCatalog();
+          cleanup();
+          return;
+        }
+
+        // Boundary check: pinned at top or bottom limit
+        const atTop = scroller.scrollTop <= 0 && delta < 0;
+        const atBottom = scroller.scrollHeight - scroller.scrollTop <= scroller.clientHeight + 5 && delta > 0;
+        if (atTop || atBottom) {
+          this.flashTargetElement(targetEl);
+          cleanup();
+          return;
+        }
+
+        // Adaptive displacement curve based on remaining distance
+        if (Math.abs(delta) > 1200) {
+          // Long distance: rapid step by 75% of distance
+          scroller.scrollTop += delta * 0.75;
+          scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+          setTimeout(cruiseStep, 70);
+        } else if (Math.abs(delta) > 250) {
+          // Medium distance: smooth step
+          scroller.scrollBy({ top: delta * 0.75, behavior: 'smooth' });
+          setTimeout(cruiseStep, 90);
+        } else {
+          // Final approach: precise smooth landing
+          targetEl.scrollIntoView({
+            behavior: 'smooth',
+            block: isAttachment ? 'center' : 'start'
+          });
+          setTimeout(cruiseStep, 120);
+        }
+      } else {
+        // Target is not yet rendered in DOM: infer direction and trigger virtual scroller hydration
+        const queries = Array.from(document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY));
+        let scrollDirection = -1; // -1 = up, 1 = down
+
+        if (queries.length > 0 && typeof item.queryIndex === 'number') {
+          const firstQuery = queries[0];
+          const firstIdx = this.inferQueryIndex(firstQuery);
+          if (firstIdx !== -1) {
+            scrollDirection = item.queryIndex < firstIdx ? -1 : 1;
+          } else {
+            scrollDirection = item.queryIndex === 0 ? -1 : (scroller.scrollTop > 500 ? -1 : 1);
+          }
+        }
+
+        const currentTop = scroller.scrollTop;
+        if (scrollDirection < 0) {
+          const stepAmount = Math.min(2500, Math.max(1000, currentTop));
+          scroller.scrollTop = Math.max(0, currentTop - stepAmount);
+        } else {
+          scroller.scrollTop = currentTop + 2500;
+        }
+
+        scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+
+        if (Math.abs(scroller.scrollTop - lastScrollTop) < 2) {
+          stuckCount++;
+          if (stuckCount >= 6) {
+            cleanup();
+            return;
+          }
+        } else {
+          stuckCount = 0;
+        }
+        lastScrollTop = scroller.scrollTop;
+
+        setTimeout(cruiseStep, 120);
+      }
+    };
+
+    // Begin cruise navigation
+    cruiseStep();
+  },
+
+  // Backwards-compatible standalone scroll method
+  scrollToTargetElement: function (targetQuery, item) {
+    const targetEl = this.findTargetElement(item) || targetQuery;
+    if (!targetEl) return;
+    const isAttachment = item.type === 'image' || item.type === 'file';
+    targetEl.scrollIntoView({
+      behavior: 'smooth',
+      block: isAttachment ? 'center' : 'start'
+    });
+    this.flashTargetElement(targetEl);
   }
 };
