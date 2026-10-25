@@ -136,7 +136,8 @@ GemiBoost.Exporter = {
       } else {
         resolve({
           includeLink: false,
-          includeAccount: false
+          includeAccount: false,
+          includeThinking: false
         });
       }
     });
@@ -248,9 +249,14 @@ GemiBoost.Exporter = {
 
     // Detect environment language (Chinese vs English)
     const allText = (title || '') + turns.map((t) => (t.user && t.user.text) || '').join('');
-    const isChinese =
-      /[\u4e00-\u9fa5]/.test(allText) ||
-      (document.documentElement.lang && document.documentElement.lang.startsWith('zh'));
+    let isChinese = false;
+    if (typeof document !== 'undefined' && document.documentElement?.lang) {
+      isChinese = document.documentElement.lang.toLowerCase().startsWith('zh');
+    } else if (typeof navigator !== 'undefined' && navigator.language) {
+      isChinese = navigator.language.toLowerCase().startsWith('zh');
+    } else {
+      isChinese = /[\u4e00-\u9fa5]/.test(allText);
+    }
 
     const parts = [];
 

@@ -239,14 +239,15 @@ GemiBoost.Storage = {
     if (this.isContextValid()) {
       try {
         const storage = chrome.storage.local || chrome.storage.sync;
-        storage.get([key, 'includeLink', 'includeAccount'], (res) => {
+        storage.get([key, 'includeLink', 'includeAccount', 'includeThinking'], (res) => {
           if (!res) return callback(defaults);
           if (res[key] && typeof res[key] === 'object') {
             return callback({ ...defaults, ...res[key] });
           }
           const settings = {
             includeLink: res.includeLink !== undefined ? !!res.includeLink : defaults.includeLink,
-            includeAccount: res.includeAccount !== undefined ? !!res.includeAccount : defaults.includeAccount
+            includeAccount: res.includeAccount !== undefined ? !!res.includeAccount : defaults.includeAccount,
+            includeThinking: res.includeThinking !== undefined ? !!res.includeThinking : defaults.includeThinking
           };
           callback(settings);
         });
@@ -273,7 +274,8 @@ GemiBoost.Storage = {
     const key = this.STORAGE_KEY_SETTINGS;
     const toSave = {
       includeLink: !!settings.includeLink,
-      includeAccount: !!settings.includeAccount
+      includeAccount: !!settings.includeAccount,
+      includeThinking: !!settings.includeThinking
     };
 
     if (this.isContextValid()) {

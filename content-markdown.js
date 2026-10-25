@@ -5,19 +5,19 @@ window.GemiBoost = window.GemiBoost || {};
 
 GemiBoost.Markdown = {
   // Convert an HTML element (or tree) into clean, standard Markdown
-  elementToMarkdown: function (rootElement) {
+  elementToMarkdown: function (rootElement, options = {}) {
     if (!rootElement) return '';
 
     // Clone element to safely sanitize and isolate without affecting live DOM
     const clone = rootElement.cloneNode(true);
-    this.preprocessElement(clone);
+    this.preprocessElement(clone, options);
 
-    const rawMarkdown = this.serializeNode(clone);
+    const rawMarkdown = this.serializeNode(clone, options);
     return this.postprocessMarkdown(rawMarkdown);
   },
 
   // Remove UI noise elements (copy buttons, icons, visually-hidden labels) before serialization
-  preprocessElement: function (element) {
+  preprocessElement: function (element, options = {}) {
     // Selectors for elements that should not appear in the exported markdown
     const ignoredSelectors = [
       'button',
@@ -35,6 +35,13 @@ GemiBoost.Markdown = {
     ignoredSelectors.forEach((sel) => {
       element.querySelectorAll(sel).forEach((el) => el.remove());
     });
+
+    // If includeThinking is false (default), strip all thinking containers before serialization
+    if (!options.includeThinking) {
+      if (GemiBoost.Config?.SELECTORS?.THINKING_CONTAINER) {
+        element.querySelectorAll(GemiBoost.Config.SELECTORS.THINKING_CONTAINER).forEach((el) => el.remove());
+      }
+    }
   },
 
   // Recursively serialize a DOM node to Markdown
@@ -68,19 +75,27 @@ GemiBoost.Markdown = {
       return tex ? `$${tex}$` : '';
     }
 
-    // 4. Thinking process (Flash Thinking / Reasoning blocks)
+    // 4. Thinking process (Flash Thinking / Reasoning blocks / Task steps)
     if (
       tagName === 'thinking-process' ||
       el.matches?.(GemiBoost.Config.SELECTORS.THINKING_CONTAINER) ||
-      el.classList.contains('thinking-content')
+      el.classList.contains('thinking-content') ||
+      el.classList.contains('thought-container')
     ) {
+      if (!context.includeThinking) {
+        return '';
+      }
+      const isChinese = context.isChinese !== undefined
+        ? context.isChinese
+        : ((typeof document !== 'undefined' && document.documentElement?.lang?.toLowerCase().startsWith('zh')) || false);
+      const label = isChinese ? '思考过程' : 'Thought Process';
       const thinkingContent = this.serializeChildren(el, { ...context, isInsideThinking: true }).trim();
       if (!thinkingContent) return '';
       const quoted = thinkingContent
         .split('\n')
         .map((line) => (line.trim() ? `> ${line}` : '>'))
         .join('\n');
-      return `\n\n> **[Thought Process]**\n${quoted}\n\n`;
+      return `\n\n> 💭 **[${label}]**\n${quoted}\n\n`;
     }
 
     // 5. Code blocks (custom Gemini <code-block> or standard <pre><code>)
