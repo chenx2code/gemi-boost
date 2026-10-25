@@ -497,18 +497,15 @@ body.gemiboost-toc-open #gemiboost-toc-toggle {
 /* --------- Target Prompt Arrival Highlight --------- */
 @keyframes gemiboost-pulse-highlight {
   0% {
-    outline: 2px solid var(--gb-primary);
-    outline-offset: 4px;
     background-color: var(--gb-item-active-bg);
   }
   100% {
-    outline: 2px solid transparent;
-    outline-offset: 4px;
     background-color: transparent;
   }
 }
 
 .gemiboost-target-highlight {
+  outline: none !important;
   animation: gemiboost-pulse-highlight 1.5s cubic-bezier(0.2, 0, 0, 1) forwards !important;
-  border-radius: 8px !important;
+  border-radius: 12px !important;
 }
