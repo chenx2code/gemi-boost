@@ -1,6 +1,11 @@
-# GemiBoost - Table of Contents for Gemini
+<div align="center">
+  <img src="https://raw.githubusercontent.com/chenx2code/gemi-boost/master/icons/icon128.png" width="100" alt="GemiBoost Logo" />
+  <h1>GemiBoost</h1>
+  <p><b>Google Gemini 网页版目录导航与功能增强插件</b></p>
+  <p><a href="README.md">English</a> · 简体中文</p>
+</div>
 
-[English](./README.md) | 简体中文
+---
 
 **GemiBoost** 是一款 Chrome 扩展程序，旨在增强Google Gemini网页版 (`gemini.google.com`) 的使用体验。
 
