@@ -846,7 +846,8 @@ GemiBoost.UI = {
     }
 
     if (item.type === 'file') {
-      const files = targetQuery.querySelectorAll(GemiBoost.Config.SELECTORS.FILE_CONTAINER);
+      const rawFiles = Array.from(targetQuery.querySelectorAll(GemiBoost.Config.SELECTORS.FILE_CONTAINER));
+      const files = rawFiles.filter((el) => !rawFiles.some((other) => other !== el && other.contains(el)));
       return files[item.subIndex || 0] || targetQuery;
     }
 
