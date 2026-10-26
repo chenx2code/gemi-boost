@@ -39,9 +39,13 @@ GemiBoost.Extractor = {
 
       // 3. Extract independent files
       const rawFiles = Array.from(promptEl.querySelectorAll(GemiBoost.Config.SELECTORS.FILE_CONTAINER));
+      // Keep only top-level file containers to prevent nested child elements from duplicating entries
+      const topLevelFiles = rawFiles.filter(
+        (el) => !rawFiles.some((other) => other !== el && other.contains(el))
+      );
       const fileInfoList = [];
 
-      rawFiles.forEach((file, fileIndex) => {
+      topLevelFiles.forEach((file, fileIndex) => {
         const fileText = file.textContent ? file.textContent.trim() : '';
         if (!fileText || fileTexts.has(fileText)) return;
         fileTexts.add(fileText);
@@ -405,17 +409,28 @@ GemiBoost.Extractor = {
     });
 
     // C. Attached files & documents (strictly match genuine file preview containers)
-    const fileElements = Array.from(
+    const rawFileElements = Array.from(
       promptEl.querySelectorAll(
         `${GemiBoost.Config.SELECTORS.FILE_CONTAINER}, [data-test-id*="file-preview"], [data-test-id*="attachment"]`
       )
     );
+
+    // Keep only top-level file containers to prevent nested child elements from duplicating attachments
+    const fileElements = rawFileElements.filter(
+      (el) => !rawFileElements.some((other) => other !== el && other.contains(el))
+    );
+
+    const seenFileTexts = new Set();
+    const seenAttachments = new Set();
 
     fileElements.forEach((fileEl) => {
       if (fileEl.closest('.cdk-visually-hidden')) return;
 
       const fileText = fileEl.textContent ? fileEl.textContent.trim() : '';
       if (!fileText && !fileEl.querySelector('video, audio')) return;
+
+      if (fileText && seenFileTexts.has(fileText)) return;
+      if (fileText) seenFileTexts.add(fileText);
 
       const lower = fileText.toLowerCase();
       const elHtml = fileEl.outerHTML.toLowerCase();
@@ -445,33 +460,39 @@ GemiBoost.Extractor = {
       const ext = extMatch ? extMatch[1].toUpperCase() : '';
       const category = this.detectFileCategory(ext, fName, isFolder);
 
+      let attTag = '';
       if (isYouTube) {
-        attachments.push('[YouTube Video]');
+        attTag = '[YouTube Video]';
       } else if (category === 'folder') {
         const folderName = fName || 'Folder';
-        attachments.push(`[Folder] ${folderName}`);
+        attTag = `[Folder] ${folderName}`;
       } else if (category === 'audio') {
-        attachments.push(`[Audio] ${fName || 'Audio File'}`);
+        attTag = `[Audio] ${fName || 'Audio File'}`;
       } else if (category === 'video') {
-        attachments.push(`[Video] ${fName || 'Video File'}`);
+        attTag = `[Video] ${fName || 'Video File'}`;
       } else if (category === 'pdf') {
-        attachments.push(`[PDF] ${fName}`);
+        attTag = `[PDF] ${fName}`;
       } else if (category === 'code') {
-        attachments.push(`[${ext || 'Code'}] ${fName}`);
+        attTag = `[${ext || 'Code'}] ${fName}`;
       } else if (category === 'table') {
-        attachments.push(`[${ext || 'Table'}] ${fName}`);
+        attTag = `[${ext || 'Table'}] ${fName}`;
       } else if (category === 'archive') {
-        attachments.push(`[${ext || 'Archive'}] ${fName}`);
+        attTag = `[${ext || 'Archive'}] ${fName}`;
       } else if (category === 'text') {
-        attachments.push(`[${ext || 'Text'}] ${fName}`);
+        attTag = `[${ext || 'Text'}] ${fName}`;
       } else if (category === 'image' || isImageFile) {
         if (images.length === 0) {
-          attachments.push('[Image]');
+          attTag = '[Image]';
         }
       } else if (hasFileExtension || fileEl.matches(GemiBoost.Config.SELECTORS.FILE_CONTAINER)) {
         if (fName && fName.length < 150) {
-          attachments.push(`[${ext || 'Document'}] ${fName}`);
+          attTag = `[${ext || 'Document'}] ${fName}`;
         }
+      }
+
+      if (attTag && !seenAttachments.has(attTag)) {
+        seenAttachments.add(attTag);
+        attachments.push(attTag);
       }
 
       if (fileText && text.includes(fileText)) {
