@@ -227,7 +227,8 @@ body[data-theme="dark"],
 
 .gemiboost-toc-close,
 .gemiboost-toc-sync-btn,
-.gemiboost-toc-export-btn {
+.gemiboost-toc-export-btn,
+.gemiboost-toc-obsidian-btn {
   background: transparent;
   border: none;
   cursor: pointer;
@@ -251,19 +252,52 @@ body[data-theme="dark"],
   color: var(--gb-btn-hover-color);
 }
 
+.gemiboost-toc-obsidian-btn:hover {
+  background-color: rgba(124, 58, 237, 0.12);
+  color: #7c3aed;
+}
+
+/* Optical alignment: Solid filled Obsidian icon sized to match line-stroke icons */
+.gemiboost-toc-obsidian-btn svg {
+  width: 13.5px;
+  height: 13.5px;
+  transform: translateY(-0.5px);
+}
+
+.gemiboost-toc-obsidian-btn .gemiboost-spinner-composited svg,
+.gemiboost-toc-obsidian-btn.is-success svg {
+  width: 16px;
+  height: 16px;
+  transform: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .gemiboost-toc-obsidian-btn:hover {
+    background-color: rgba(167, 139, 250, 0.16);
+    color: #a78bfa;
+  }
+}
+
 .gemiboost-toc-close:focus-visible,
 .gemiboost-toc-sync-btn:focus-visible,
-.gemiboost-toc-export-btn:focus-visible {
+.gemiboost-toc-export-btn:focus-visible,
+.gemiboost-toc-obsidian-btn:focus-visible {
   outline: 2px solid var(--gb-primary);
   outline-offset: 1px;
 }
 
 /* Button States: Syncing / Loading */
 .gemiboost-toc-sync-btn.is-syncing,
-.gemiboost-toc-export-btn.is-loading {
+.gemiboost-toc-export-btn.is-loading,
+.gemiboost-toc-obsidian-btn.is-loading {
   color: var(--gb-primary);
   background-color: var(--gb-primary-container);
   cursor: default;
+}
+
+.gemiboost-toc-obsidian-btn.is-loading {
+  color: #7c3aed;
+  background-color: rgba(124, 58, 237, 0.12);
 }
 
 /* Spinner GPU Animation */
@@ -286,14 +320,16 @@ body[data-theme="dark"],
 
 /* Button States: Success Completed */
 .gemiboost-toc-sync-btn.is-synced,
-.gemiboost-toc-export-btn.is-success {
+.gemiboost-toc-export-btn.is-success,
+.gemiboost-toc-obsidian-btn.is-success {
   color: var(--gb-success-color);
   background-color: var(--gb-success-bg);
   cursor: default;
 }
 
 .gemiboost-toc-sync-btn.is-synced svg,
-.gemiboost-toc-export-btn.is-success svg {
+.gemiboost-toc-export-btn.is-success svg,
+.gemiboost-toc-obsidian-btn.is-success svg {
   width: 16px;
   height: 16px;
   display: block;
@@ -552,4 +588,294 @@ body.gemiboost-toc-open top-bar-actions {
 /* Hide toggle button when TOC is open */
 body.gemiboost-toc-open #gemiboost-toc-toggle {
   display: none !important;
+}
+
+/* ==========================================================================
+   Obsidian Export Modal (Material Design 3)
+   ========================================================================== */
+
+.gemiboost-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.46);
+  z-index: 999999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(3px);
+  opacity: 1;
+  transition: opacity 0.18s ease-out;
+  animation: gemiboost-fade-in 0.18s ease-out;
+}
+
+.gemiboost-modal-overlay.is-closing {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.gemiboost-modal-card {
+  background-color: var(--gb-container-bg);
+  border: 1px solid var(--gb-border);
+  border-radius: 20px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.24);
+  width: 440px;
+  max-width: calc(100vw - 32px);
+  padding: 22px 24px;
+  font-family: var(--gb-font-family);
+  color: var(--gb-text-primary);
+  display: flex;
+  flex-direction: column;
+  animation: gemiboost-scale-in 0.2s cubic-bezier(0.2, 0, 0, 1);
+  box-sizing: border-box;
+}
+
+.gemiboost-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.gemiboost-modal-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gemiboost-modal-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: rgba(124, 58, 237, 0.12);
+  color: #7c3aed;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .gemiboost-modal-icon {
+    background-color: rgba(167, 139, 250, 0.16);
+    color: #a78bfa;
+  }
+}
+
+.gemiboost-modal-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--gb-text-primary);
+  letter-spacing: -0.15px;
+}
+
+.gemiboost-modal-close {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--gb-text-tertiary);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.gemiboost-modal-close:hover {
+  background-color: var(--gb-item-hover);
+  color: var(--gb-text-primary);
+}
+
+.gemiboost-modal-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.gemiboost-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gemiboost-modal-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--gb-text-secondary);
+}
+
+.gemiboost-modal-input-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background-color: var(--gb-header-bg);
+  border: 1.5px solid var(--gb-border);
+  border-radius: 10px;
+  color: var(--gb-text-tertiary);
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+}
+
+.gemiboost-modal-input-box:focus-within {
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.15);
+  color: #7c3aed;
+}
+
+.gemiboost-modal-input {
+  border: none;
+  background: transparent;
+  color: var(--gb-text-primary);
+  font-family: inherit;
+  font-size: 13.5px;
+  width: 100%;
+  outline: none;
+  line-height: 1.4;
+}
+
+.gemiboost-modal-input::placeholder {
+  color: var(--gb-text-tertiary);
+  opacity: 0.6;
+}
+
+/* History chips */
+.gemiboost-modal-chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.gemiboost-modal-chips-label {
+  font-size: 11px;
+  color: var(--gb-text-tertiary);
+  margin-right: 2px;
+}
+
+.gemiboost-modal-chips-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.gemiboost-modal-chip {
+  background-color: var(--gb-badge-bg);
+  color: var(--gb-text-secondary);
+  border: 1px solid var(--gb-border);
+  border-radius: 12px;
+  padding: 3px 9px;
+  font-size: 11.5px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.2, 0, 0, 1);
+  display: inline-flex;
+  align-items: center;
+  line-height: 1.3;
+}
+
+.gemiboost-modal-chip:hover {
+  background-color: rgba(124, 58, 237, 0.1);
+  border-color: #7c3aed;
+  color: #7c3aed;
+  transform: translateY(-0.5px);
+}
+
+@media (prefers-color-scheme: dark) {
+  .gemiboost-modal-chip:hover {
+    background-color: rgba(167, 139, 250, 0.14);
+    border-color: #a78bfa;
+    color: #a78bfa;
+  }
+}
+
+/* Modal Checkbox Row (Set as default) */
+.gemiboost-modal-checkbox-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  cursor: pointer;
+  user-select: none;
+  width: fit-content;
+}
+
+.gemiboost-modal-checkbox {
+  width: 15px;
+  height: 15px;
+  accent-color: #7c3aed;
+  cursor: pointer;
+  margin: 0;
+  border-radius: 4px;
+}
+
+.gemiboost-modal-checkbox-label {
+  font-size: 12px;
+  color: var(--gb-text-secondary);
+  line-height: 1.4;
+  transition: color 0.15s ease;
+}
+
+.gemiboost-modal-checkbox-row:hover .gemiboost-modal-checkbox-label {
+  color: var(--gb-text-primary);
+}
+
+.gemiboost-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.gemiboost-modal-btn {
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 18px;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gemiboost-modal-btn-cancel {
+  background: transparent;
+  color: var(--gb-text-secondary);
+}
+
+.gemiboost-modal-btn-cancel:hover {
+  background-color: var(--gb-item-hover);
+  color: var(--gb-text-primary);
+}
+
+.gemiboost-modal-btn-confirm {
+  background-color: #7c3aed;
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(124, 58, 237, 0.3);
+}
+
+.gemiboost-modal-btn-confirm:hover {
+  background-color: #6d28d9;
+  box-shadow: 0 2px 6px rgba(124, 58, 237, 0.4);
+}
+
+@keyframes gemiboost-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes gemiboost-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }

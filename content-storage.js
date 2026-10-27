@@ -261,7 +261,7 @@ GemiBoost.Storage = {
     if (this.isContextValid()) {
       try {
         const storage = chrome.storage.local || chrome.storage.sync;
-        storage.get([key, 'includeLink', 'includeAccount', 'includeThinking'], (res) => {
+        storage.get([key, 'includeLink', 'includeAccount', 'includeThinking', 'obsidianFolder', 'obsidianVault', 'obsidianSilent', 'obsidianPromptFolder', 'obsidianFolderHistory'], (res) => {
           if (!res) return callback(defaults);
           if (res[key] && typeof res[key] === 'object') {
             return callback({ ...defaults, ...res[key] });
@@ -269,7 +269,12 @@ GemiBoost.Storage = {
           const settings = {
             includeLink: res.includeLink !== undefined ? !!res.includeLink : defaults.includeLink,
             includeAccount: res.includeAccount !== undefined ? !!res.includeAccount : defaults.includeAccount,
-            includeThinking: res.includeThinking !== undefined ? !!res.includeThinking : defaults.includeThinking
+            includeThinking: res.includeThinking !== undefined ? !!res.includeThinking : defaults.includeThinking,
+            obsidianFolder: res.obsidianFolder !== undefined ? String(res.obsidianFolder) : defaults.obsidianFolder,
+            obsidianVault: res.obsidianVault !== undefined ? String(res.obsidianVault) : defaults.obsidianVault,
+            obsidianSilent: res.obsidianSilent !== undefined ? !!res.obsidianSilent : defaults.obsidianSilent,
+            obsidianPromptFolder: res.obsidianPromptFolder !== undefined ? !!res.obsidianPromptFolder : defaults.obsidianPromptFolder,
+            obsidianFolderHistory: Array.isArray(res.obsidianFolderHistory) ? res.obsidianFolderHistory : defaults.obsidianFolderHistory
           };
           callback(settings);
         });
@@ -297,7 +302,12 @@ GemiBoost.Storage = {
     const toSave = {
       includeLink: !!settings.includeLink,
       includeAccount: !!settings.includeAccount,
-      includeThinking: !!settings.includeThinking
+      includeThinking: !!settings.includeThinking,
+      obsidianFolder: settings.obsidianFolder !== undefined ? String(settings.obsidianFolder) : 'Gemini',
+      obsidianVault: settings.obsidianVault !== undefined ? String(settings.obsidianVault) : '',
+      obsidianSilent: settings.obsidianSilent !== undefined ? !!settings.obsidianSilent : true,
+      obsidianPromptFolder: settings.obsidianPromptFolder !== undefined ? !!settings.obsidianPromptFolder : false,
+      obsidianFolderHistory: Array.isArray(settings.obsidianFolderHistory) ? settings.obsidianFolderHistory : ['Gemini']
     };
 
     if (this.isContextValid()) {
@@ -323,5 +333,26 @@ GemiBoost.Storage = {
       } catch (e) {}
       if (callback) callback();
     }
+  },
+
+  // Record a folder to recent history (up to 5 folders, deduplicated)
+  addObsidianFolderHistory: function (folder, callback) {
+    if (!folder || typeof folder !== 'string') {
+      if (callback) callback();
+      return;
+    }
+    const cleanFolder = folder.trim().replace(/^[\/\\\\]+|[\/\\\\]+$/g, '');
+    if (!cleanFolder) {
+      if (callback) callback();
+      return;
+    }
+
+    this.loadExportSettings((settings) => {
+      let history = Array.isArray(settings.obsidianFolderHistory) ? settings.obsidianFolderHistory.slice() : ['Gemini'];
+      // Filter out existing and put to front
+      history = [cleanFolder, ...history.filter((f) => f.toLowerCase() !== cleanFolder.toLowerCase())].slice(0, 5);
+      settings.obsidianFolderHistory = history;
+      this.saveExportSettings(settings, callback);
+    });
   }
 };

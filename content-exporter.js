@@ -35,7 +35,11 @@ GemiBoost.Exporter = {
 
     try {
       // 1. Ensure conversation is fully loaded from top to bottom
-      await this.ensureFullHistoryLoaded();
+      await this.ensureFullHistoryLoaded('markdown');
+
+      if (GemiBoost.UI) {
+        GemiBoost.UI.setExportButtonState('exporting', '正在组装对话内容...');
+      }
 
       // Load user export preferences (from popup switches)
       const settings = await this.loadExportSettings();
@@ -74,7 +78,7 @@ GemiBoost.Exporter = {
   },
 
   // Check and trigger sync if older turns might not be loaded into DOM
-  ensureFullHistoryLoaded: function () {
+  ensureFullHistoryLoaded: function (target = 'markdown') {
     return new Promise((resolve) => {
       const scroller = GemiBoost.Utils.getChatScrollContainer();
       if (!scroller) {
@@ -99,18 +103,29 @@ GemiBoost.Exporter = {
           return resolve();
         }
 
+        // Helper to update only the triggering button's state to prevent cross-contamination
+        const updateSyncUI = (count) => {
+          if (!GemiBoost.UI) return;
+          const msg = count ? `正在加载历史记录 (已加载 ${count} 条)...` : '正在同步更早的历史记录...';
+          if (target === 'obsidian') {
+            if (GemiBoost.UI.setObsidianButtonState) {
+              GemiBoost.UI.setObsidianButtonState('syncing', msg);
+            }
+          } else {
+            if (GemiBoost.UI.setExportButtonState) {
+              GemiBoost.UI.setExportButtonState('syncing', msg);
+            }
+          }
+        };
+
         // Otherwise (fresh page load or partially loaded), run the full sync loop
         // which scrolls up to the very first prompt.
-        if (GemiBoost.UI) {
-          GemiBoost.UI.setExportButtonState('syncing', '正在同步更早的历史记录...');
-        }
+        updateSyncUI();
 
         GemiBoost.Sync.triggerSync({
           silentUI: true,
           onBatchLoaded: (count) => {
-            if (GemiBoost.UI) {
-              GemiBoost.UI.setExportButtonState('syncing', `正在加载历史记录 (已加载 ${count} 条)...`);
-            }
+            updateSyncUI(count);
           },
           onComplete: (fullItems) => {
             if (chatId && fullItems && fullItems.length > 0 && GemiBoost.Storage) {
@@ -354,5 +369,142 @@ GemiBoost.Exporter = {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     }, 100);
+  },
+
+  // Main entry point for exporting conversation directly to Obsidian
+  exportToObsidian: async function (options = {}) {
+    if (this.isExporting) return;
+
+    const chatId = GemiBoost.Utils.getChatId();
+    if (!chatId) {
+      console.warn('[GemiBoost] Not on an active chat page.');
+      return;
+    }
+
+    if (GemiBoost.Sync && GemiBoost.Sync.isCurrentlySyncing()) {
+      if (GemiBoost.UI && GemiBoost.UI.setObsidianButtonState) {
+        GemiBoost.UI.setObsidianButtonState('syncing', '正在同步历史记录中，请稍候...');
+      }
+      return;
+    }
+
+    this.isExporting = true;
+    const uiStrings = GemiBoost.UI && GemiBoost.UI.getStrings ? GemiBoost.UI.getStrings() : null;
+    const loadingMsg = uiStrings ? uiStrings.obsidianLoading : '正在准备导出至 Obsidian...';
+    if (GemiBoost.UI && GemiBoost.UI.setObsidianButtonState) {
+      GemiBoost.UI.setObsidianButtonState('loading', loadingMsg);
+    }
+
+    try {
+      // 1. Ensure conversation is fully loaded from top to bottom
+      await this.ensureFullHistoryLoaded('obsidian');
+
+      if (GemiBoost.UI && GemiBoost.UI.setObsidianButtonState) {
+        GemiBoost.UI.setObsidianButtonState('loading', loadingMsg);
+      }
+
+      // Load user export preferences (from popup switches and settings)
+      const settings = await this.loadExportSettings();
+
+      // 2. Extract conversation turns from live DOM (delegated to Extractor)
+      const conversationData = this.extractConversationData(settings);
+      if (!conversationData || conversationData.turns.length === 0) {
+        console.warn('[GemiBoost] No conversation turns found to export to Obsidian.');
+        if (GemiBoost.UI && GemiBoost.UI.setObsidianButtonState) {
+          GemiBoost.UI.setObsidianButtonState('idle');
+        }
+        return;
+      }
+
+      // 3. Assemble Markdown document
+      const markdown = this.assembleMarkdown(conversationData, settings);
+
+      // 4. Sanitize title and compute note path inside Obsidian
+      const rawTitle = options.title !== undefined && options.title.trim() ? options.title : conversationData.title;
+      const cleanTitle = this.sanitizeFilename(rawTitle).replace(/\.md$/i, '');
+      const rawFolder = options.folder !== undefined ? String(options.folder) : (typeof settings.obsidianFolder === 'string' ? settings.obsidianFolder : 'Gemini');
+      const folder = rawFolder.trim().replace(/^[\/\\\\]+|[\/\\\\]+$/g, '');
+      const notePath = folder ? `${folder}/${cleanTitle}` : cleanTitle;
+
+      // 5. Copy Markdown to clipboard (Official Obsidian 1.7.2+ clipboard-transit pattern)
+      await this.writeToClipboard(markdown);
+
+      // 6. Build official Obsidian URI scheme parameters
+      // Using 'file' parameter ensures Obsidian resolves subfolder structures
+      const params = new URLSearchParams();
+      params.append('file', notePath);
+      params.append('clipboard', 'true');
+
+      const targetVault = options.vault !== undefined ? options.vault : settings.obsidianVault;
+      if (targetVault && targetVault.trim()) {
+        params.append('vault', targetVault.trim());
+      }
+      if (settings.obsidianSilent !== false) {
+        params.append('silent', 'true');
+      }
+
+      const obsidianUri = `obsidian://new?${params.toString()}`;
+
+      // 7. Trigger native URI dispatch
+      this.triggerObsidianUri(obsidianUri);
+
+      if (GemiBoost.UI && GemiBoost.UI.setObsidianButtonState) {
+        const successPrefix = uiStrings ? uiStrings.obsidianSuccess.replace(/[！!]$/, '') : '已导出至 Obsidian';
+        GemiBoost.UI.setObsidianButtonState('success', `${successPrefix} (${notePath})`);
+        setTimeout(() => {
+          GemiBoost.UI.setObsidianButtonState('idle');
+        }, GemiBoost.Config.TIMING.EXPORT_FEEDBACK_MS || 1500);
+      }
+    } catch (err) {
+      console.error('[GemiBoost] Error during Obsidian export:', err);
+      if (GemiBoost.UI && GemiBoost.UI.setObsidianButtonState) {
+        GemiBoost.UI.setObsidianButtonState('idle');
+      }
+    } finally {
+      this.isExporting = false;
+    }
+  },
+
+  // Safely write text to system clipboard with fallback
+  writeToClipboard: async function (text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return;
+      } catch (err) {
+        console.warn('[GemiBoost] navigator.clipboard.writeText failed, falling back to textarea execCommand:', err);
+      }
+    }
+
+    // Fallback using document.execCommand('copy')
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.top = '-9999px';
+    textarea.style.left = '-9999px';
+    textarea.setAttribute('readonly', '');
+    document.body.appendChild(textarea);
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+    const successful = document.execCommand('copy');
+    document.body.removeChild(textarea);
+
+    if (!successful) {
+      throw new Error('Failed to copy Markdown content to clipboard.');
+    }
+  },
+
+  // Trigger Obsidian URI dispatch via hidden link click
+  triggerObsidianUri: function (uri) {
+    const a = document.createElement('a');
+    a.href = uri;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      if (a.parentNode) {
+        document.body.removeChild(a);
+      }
+    }, 150);
   }
 };

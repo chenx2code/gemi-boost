@@ -61,7 +61,8 @@ GemiBoost.App = {
     GemiBoost.UI.ensureDrawerUI({
       onClose: () => this.toggleCatalog(false),
       onSync: () => this.handleSync(),
-      onExport: () => this.handleExport()
+      onExport: () => this.handleExport(),
+      onObsidian: () => this.handleObsidianExport()
     });
   },
 
@@ -70,6 +71,58 @@ GemiBoost.App = {
     if (GemiBoost.Exporter) {
       GemiBoost.Exporter.exportToMarkdown();
     }
+  },
+
+  // Trigger conversation export directly to Obsidian
+  handleObsidianExport: function () {
+    if (!GemiBoost.Exporter || !GemiBoost.Exporter.exportToObsidian) return;
+
+    if (!GemiBoost.Storage || !GemiBoost.Storage.loadExportSettings) {
+      GemiBoost.Exporter.exportToObsidian();
+      return;
+    }
+
+    GemiBoost.Storage.loadExportSettings((settings) => {
+      if (settings && settings.obsidianPromptFolder && GemiBoost.UI && GemiBoost.UI.showObsidianModal) {
+        const title = GemiBoost.Extractor ? GemiBoost.Extractor.extractChatTitle() : '';
+        const defaultFolder = (settings.obsidianFolderHistory && settings.obsidianFolderHistory[0]) || settings.obsidianFolder || 'Gemini';
+        const historyFolders = settings.obsidianFolderHistory || [];
+
+        GemiBoost.UI.showObsidianModal({
+          title,
+          defaultFolder,
+          historyFolders,
+          onConfirm: ({ folder, title: chosenTitle, setAsDefault }) => {
+            if (setAsDefault) {
+              // Persist as new default folder and turn off prompt mode
+              const updatedSettings = {
+                ...settings,
+                obsidianFolder: folder,
+                obsidianPromptFolder: false
+              };
+              let history = Array.isArray(settings.obsidianFolderHistory) ? settings.obsidianFolderHistory.slice() : ['Gemini'];
+              history = [folder, ...history.filter((f) => f.toLowerCase() !== folder.toLowerCase())].slice(0, 5);
+              updatedSettings.obsidianFolderHistory = history;
+
+              if (GemiBoost.Storage.saveExportSettings) {
+                GemiBoost.Storage.saveExportSettings(updatedSettings, () => {
+                  GemiBoost.Exporter.exportToObsidian({ folder, title: chosenTitle });
+                });
+              } else {
+                GemiBoost.Exporter.exportToObsidian({ folder, title: chosenTitle });
+              }
+            } else {
+              if (GemiBoost.Storage.addObsidianFolderHistory) {
+                GemiBoost.Storage.addObsidianFolderHistory(folder);
+              }
+              GemiBoost.Exporter.exportToObsidian({ folder, title: chosenTitle });
+            }
+          }
+        });
+      } else {
+        GemiBoost.Exporter.exportToObsidian();
+      }
+    });
   },
 
   // Mount or reposition toggle button in top bar

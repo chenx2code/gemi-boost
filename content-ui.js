@@ -17,6 +17,18 @@ const I18N_UI = {
     exportSyncing: '正在同步历史记录以供导出...',
     exportLoading: '正在导出 Markdown 文件...',
     exportSuccess: '导出成功！',
+    obsidianIdle: '一键导出至 Obsidian',
+    obsidianSyncing: '正在同步历史记录以供导出...',
+    obsidianLoading: '正在准备导出至 Obsidian...',
+    obsidianSuccess: '已导出至 Obsidian！',
+    obsidianModalTitle: '导出至 Obsidian',
+    obsidianModalFolderLabel: '目标文件夹',
+    obsidianModalFolderPlaceholder: '例如: Gemini 或 Work/AI',
+    obsidianModalTitleLabel: '笔记标题',
+    obsidianModalRecentLabel: '快捷历史标签:',
+    obsidianModalSetDefault: '设为默认文件夹且不再提醒',
+    cancelBtn: '取消',
+    confirmExportBtn: '确认导出',
     closeTitle: '关闭目录',
     toggleTitle: '展开/收起目录',
     imageLabel: '图片',
@@ -34,6 +46,18 @@ const I18N_UI = {
     exportSyncing: 'Syncing history for export...',
     exportLoading: 'Exporting Markdown file...',
     exportSuccess: 'Export complete!',
+    obsidianIdle: 'Export conversation to Obsidian',
+    obsidianSyncing: 'Syncing history for Obsidian...',
+    obsidianLoading: 'Exporting to Obsidian...',
+    obsidianSuccess: 'Exported to Obsidian!',
+    obsidianModalTitle: 'Export to Obsidian',
+    obsidianModalFolderLabel: 'Target Folder',
+    obsidianModalFolderPlaceholder: 'e.g. Gemini or Work/AI',
+    obsidianModalTitleLabel: 'Note Title',
+    obsidianModalRecentLabel: 'Recent folders:',
+    obsidianModalSetDefault: 'Set as default folder and do not ask again',
+    cancelBtn: 'Cancel',
+    confirmExportBtn: 'Export',
     closeTitle: 'Close Table of Contents',
     toggleTitle: 'Toggle Table of Contents',
     imageLabel: 'Image',
@@ -67,7 +91,7 @@ GemiBoost.UI = {
 
   // Ensure the main TOC sidebar drawer is injected into bard-sidenav-container
   ensureDrawerUI: function (callbacks = {}) {
-    const { onClose, onSync, onExport } = callbacks;
+    const { onClose, onSync, onExport, onObsidian } = callbacks;
     const containerId = GemiBoost.Config.DOM_IDS.CONTAINER;
     let container = document.getElementById(containerId);
     if (container) return container;
@@ -91,6 +115,13 @@ GemiBoost.UI = {
         <span id="gemiboost-toc-badge" class="gemiboost-toc-badge is-hidden">0</span>
       </div>
       <div class="gemiboost-toc-header-actions">
+        <button id="${GemiBoost.Config.DOM_IDS.OBSIDIAN_BTN}" class="gemiboost-toc-obsidian-btn" title="${strings.obsidianIdle}" aria-label="${strings.obsidianIdle}" data-state="idle">
+          <svg viewBox="0 0 24 24" width="13.5" height="13.5" fill="currentColor">
+            <path d="M9.643 14.012c.615-.183 1.605-.465 2.745-.534-.684-1.725-.849-3.235-.716-4.579.153-1.552.7-2.847 1.234-3.95.114-.235.223-.454.328-.664.149-.297.289-.577.42-.86.217-.47.378-.885.46-1.27.08-.38.08-.719-.014-1.044-.095-.325-.297-.675-.681-1.06a1.6 1.6 0 00-1.475.36l-4.95 4.453a1.602 1.602 0 00-.512.952l-.427 2.83c.67.592 2.327 2.317 3.335 4.71.09.213.174.432.253.656zM5.855 9.937c-.024.1-.057.197-.099.29L3.14 16.058a1.602 1.602 0 00.313 1.772l4.117 4.24c2.102-3.102 1.795-6.02.835-8.3-.728-1.73-1.832-3.083-2.55-3.833z"/>
+            <path d="M8.52 22.57c.073.01.146.018.22.02.781.023 2.095.091 3.16.288.87.16 2.593.642 4.011 1.056 1.082.316 2.197-.548 2.354-1.664.115-.814.33-1.735.725-2.58l-.009.004c-.67-1.87-1.523-3.077-2.417-3.847a5.294 5.294 0 00-2.777-1.258c-1.541-.216-2.952.189-3.841.45.532 2.218.368 4.828-1.425 7.53z"/>
+            <path d="M19.676 18.538a69.072 69.072 0 001.858-2.952.811.811 0 00-.061-.901c-.516-.684-1.504-2.075-2.042-3.362-.554-1.323-.636-3.378-.64-4.378a1.708 1.708 0 00-.359-1.051L15.235 1.83a3.757 3.757 0 01-.076.545c-.107.503-.307 1.004-.536 1.498-.135.29-.29.601-.446.915-.105.21-.21.42-.31.626-.517 1.068-.998 2.227-1.132 3.59-.125 1.262.046 2.73.814 4.484.128.01.257.025.386.043a6.364 6.364 0 013.327 1.506c.916.79 1.743 1.921 2.414 3.5z"/>
+          </svg>
+        </button>
         <button id="${GemiBoost.Config.DOM_IDS.EXPORT_BTN}" class="gemiboost-toc-export-btn" title="${strings.exportIdle}" aria-label="${strings.exportIdle}" data-state="idle">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
             <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
@@ -113,6 +144,13 @@ GemiBoost.UI = {
     closeBtn.addEventListener('click', () => {
       if (onClose) onClose();
     });
+
+    const obsidianBtn = header.querySelector(`#${GemiBoost.Config.DOM_IDS.OBSIDIAN_BTN}`);
+    if (obsidianBtn) {
+      obsidianBtn.addEventListener('click', () => {
+        if (onObsidian) onObsidian();
+      });
+    }
 
     const syncBtn = header.querySelector(`#${GemiBoost.Config.DOM_IDS.SYNC_BTN}`);
     syncBtn.addEventListener('click', () => {
@@ -440,6 +478,231 @@ GemiBoost.UI = {
 
     exportBtn.setAttribute('title', finalTooltip);
     exportBtn.setAttribute('aria-label', finalTooltip);
+  },
+
+  // Update Obsidian export button state in top header
+  setObsidianButtonState: function (state, tooltip) {
+    const obsidianBtn = document.getElementById(GemiBoost.Config.DOM_IDS.OBSIDIAN_BTN);
+    if (!obsidianBtn) return;
+
+    const strings = this.getStrings();
+    const defaultTooltip =
+      state === 'syncing'
+        ? strings.obsidianSyncing
+        : state === 'loading'
+        ? strings.obsidianLoading
+        : state === 'success'
+        ? strings.obsidianSuccess
+        : strings.obsidianIdle;
+
+    const finalTooltip = tooltip || defaultTooltip;
+    obsidianBtn.dataset.state = state;
+
+    if (state === 'syncing' || state === 'loading') {
+      obsidianBtn.classList.remove('is-success');
+      obsidianBtn.classList.add('is-loading');
+      obsidianBtn.innerHTML = `
+        <span class="gemiboost-spinner-composited">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <circle cx="12" cy="12" r="9" stroke-dasharray="40 18" />
+          </svg>
+        </span>
+      `;
+    } else if (state === 'success') {
+      obsidianBtn.classList.remove('is-loading');
+      obsidianBtn.classList.add('is-success');
+      obsidianBtn.innerHTML = `
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+          <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+        </svg>
+      `;
+    } else {
+      obsidianBtn.classList.remove('is-loading', 'is-success');
+      obsidianBtn.innerHTML = `
+        <svg viewBox="0 0 24 24" width="13.5" height="13.5" fill="currentColor">
+          <path d="M9.643 14.012c.615-.183 1.605-.465 2.745-.534-.684-1.725-.849-3.235-.716-4.579.153-1.552.7-2.847 1.234-3.95.114-.235.223-.454.328-.664.149-.297.289-.577.42-.86.217-.47.378-.885.46-1.27.08-.38.08-.719-.014-1.044-.095-.325-.297-.675-.681-1.06a1.6 1.6 0 00-1.475.36l-4.95 4.453a1.602 1.602 0 00-.512.952l-.427 2.83c.67.592 2.327 2.317 3.335 4.71.09.213.174.432.253.656zM5.855 9.937c-.024.1-.057.197-.099.29L3.14 16.058a1.602 1.602 0 00.313 1.772l4.117 4.24c2.102-3.102 1.795-6.02.835-8.3-.728-1.73-1.832-3.083-2.55-3.833z"/>
+          <path d="M8.52 22.57c.073.01.146.018.22.02.781.023 2.095.091 3.16.288.87.16 2.593.642 4.011 1.056 1.082.316 2.197-.548 2.354-1.664.115-.814.33-1.735.725-2.58l-.009.004c-.67-1.87-1.523-3.077-2.417-3.847a5.294 5.294 0 00-2.777-1.258c-1.541-.216-2.952.189-3.841.45.532 2.218.368 4.828-1.425 7.53z"/>
+          <path d="M19.676 18.538a69.072 69.072 0 001.858-2.952.811.811 0 00-.061-.901c-.516-.684-1.504-2.075-2.042-3.362-.554-1.323-.636-3.378-.64-4.378a1.708 1.708 0 00-.359-1.051L15.235 1.83a3.757 3.757 0 01-.076.545c-.107.503-.307 1.004-.536 1.498-.135.29-.29.601-.446.915-.105.21-.21.42-.31.626-.517 1.068-.998 2.227-1.132 3.59-.125 1.262.046 2.73.814 4.484.128.01.257.025.386.043a6.364 6.364 0 013.327 1.506c.916.79 1.743 1.921 2.414 3.5z"/>
+        </svg>
+      `;
+    }
+
+    obsidianBtn.setAttribute('title', finalTooltip);
+    obsidianBtn.setAttribute('aria-label', finalTooltip);
+  },
+
+  // Show Material Design 3 interactive modal for Obsidian folder and note title confirmation
+  showObsidianModal: function (options = {}) {
+    const { title = '', defaultFolder = 'Gemini', historyFolders = [], onConfirm, onCancel } = options;
+    const strings = this.getStrings();
+
+    // Close any existing modal first
+    const existing = document.getElementById('gemiboost-obsidian-modal');
+    if (existing && existing.parentNode) {
+      existing.parentNode.removeChild(existing);
+    }
+
+    const overlay = document.createElement('div');
+    overlay.id = 'gemiboost-obsidian-modal';
+    overlay.className = 'gemiboost-modal-overlay';
+
+    // Build history chips HTML
+    const foldersToDisplay = Array.from(new Set([defaultFolder, ...(Array.isArray(historyFolders) ? historyFolders : [])]))
+      .filter(Boolean)
+      .slice(0, 5);
+
+    let chipsHtml = '';
+    if (foldersToDisplay.length > 0) {
+      const chipButtons = foldersToDisplay
+        .map(
+          (f) =>
+            `<button type="button" class="gemiboost-modal-chip" data-folder="${f}">📁 ${f}</button>`
+        )
+        .join('');
+      chipsHtml = `
+        <div class="gemiboost-modal-chips-row">
+          <span class="gemiboost-modal-chips-label">${strings.obsidianModalRecentLabel}</span>
+          <div class="gemiboost-modal-chips-list">${chipButtons}</div>
+        </div>
+      `;
+    }
+
+    overlay.innerHTML = `
+      <div class="gemiboost-modal-card" role="dialog" aria-modal="true" aria-labelledby="gemiboost-modal-title">
+        <div class="gemiboost-modal-header">
+          <div class="gemiboost-modal-brand">
+            <span class="gemiboost-modal-icon">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                <path d="M9.643 14.012c.615-.183 1.605-.465 2.745-.534-.684-1.725-.849-3.235-.716-4.579.153-1.552.7-2.847 1.234-3.95.114-.235.223-.454.328-.664.149-.297.289-.577.42-.86.217-.47.378-.885.46-1.27.08-.38.08-.719-.014-1.044-.095-.325-.297-.675-.681-1.06a1.6 1.6 0 00-1.475.36l-4.95 4.453a1.602 1.602 0 00-.512.952l-.427 2.83c.67.592 2.327 2.317 3.335 4.71.09.213.174.432.253.656zM5.855 9.937c-.024.1-.057.197-.099.29L3.14 16.058a1.602 1.602 0 00.313 1.772l4.117 4.24c2.102-3.102 1.795-6.02.835-8.3-.728-1.73-1.832-3.083-2.55-3.833z"/>
+                <path d="M8.52 22.57c.073.01.146.018.22.02.781.023 2.095.091 3.16.288.87.16 2.593.642 4.011 1.056 1.082.316 2.197-.548 2.354-1.664.115-.814.33-1.735.725-2.58l-.009.004c-.67-1.87-1.523-3.077-2.417-3.847a5.294 5.294 0 00-2.777-1.258c-1.541-.216-2.952.189-3.841.45.532 2.218.368 4.828-1.425 7.53z"/>
+                <path d="M19.676 18.538a69.072 69.072 0 001.858-2.952.811.811 0 00-.061-.901c-.516-.684-1.504-2.075-2.042-3.362-.554-1.323-.636-3.378-.64-4.378a1.708 1.708 0 00-.359-1.051L15.235 1.83a3.757 3.757 0 01-.076.545c-.107.503-.307 1.004-.536 1.498-.135.29-.29.601-.446.915-.105.21-.21.42-.31.626-.517 1.068-.998 2.227-1.132 3.59-.125 1.262.046 2.73.814 4.484.128.01.257.025.386.043a6.364 6.364 0 013.327 1.506c.916.79 1.743 1.921 2.414 3.5z"/>
+              </svg>
+            </span>
+            <span id="gemiboost-modal-title" class="gemiboost-modal-title">${strings.obsidianModalTitle}</span>
+          </div>
+          <button type="button" class="gemiboost-modal-close" aria-label="${strings.closeTitle}">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+              <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="gemiboost-modal-body">
+          <!-- 1. Note Title input (Primary identity) -->
+          <div class="gemiboost-modal-field">
+            <label for="gemiboost-input-title" class="gemiboost-modal-label">${strings.obsidianModalTitleLabel}</label>
+            <div class="gemiboost-modal-input-box">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+              </svg>
+              <input type="text" id="gemiboost-input-title" class="gemiboost-modal-input" value="${title || ''}" spellcheck="false" autocomplete="off">
+            </div>
+          </div>
+
+          <!-- 2. Target Folder input (Storage destination) -->
+          <div class="gemiboost-modal-field" style="margin-top: 14px;">
+            <label for="gemiboost-input-folder" class="gemiboost-modal-label">${strings.obsidianModalFolderLabel}</label>
+            <div class="gemiboost-modal-input-box">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+              </svg>
+              <input type="text" id="gemiboost-input-folder" class="gemiboost-modal-input" placeholder="${strings.obsidianModalFolderPlaceholder}" value="${defaultFolder || 'Gemini'}" spellcheck="false" autocomplete="off">
+            </div>
+          </div>
+
+          <!-- 3. History chips for folder -->
+          ${chipsHtml}
+
+          <!-- 4. Remember folder as default & don't ask again checkbox -->
+          <label class="gemiboost-modal-checkbox-row">
+            <input type="checkbox" id="gemiboost-input-setdefault" class="gemiboost-modal-checkbox">
+            <span class="gemiboost-modal-checkbox-label">${strings.obsidianModalSetDefault}</span>
+          </label>
+        </div>
+
+        <div class="gemiboost-modal-footer">
+          <button type="button" class="gemiboost-modal-btn gemiboost-modal-btn-cancel">${strings.cancelBtn}</button>
+          <button type="button" class="gemiboost-modal-btn gemiboost-modal-btn-confirm">${strings.confirmExportBtn}</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const folderInput = overlay.querySelector('#gemiboost-input-folder');
+    const titleInput = overlay.querySelector('#gemiboost-input-title');
+    const setDefaultCheckbox = overlay.querySelector('#gemiboost-input-setdefault');
+    const cancelBtn = overlay.querySelector('.gemiboost-modal-btn-cancel');
+    const confirmBtn = overlay.querySelector('.gemiboost-modal-btn-confirm');
+    const closeBtn = overlay.querySelector('.gemiboost-modal-close');
+
+    // Click history chips to quickly fill folder
+    const chips = overlay.querySelectorAll('.gemiboost-modal-chip');
+    chips.forEach((ch) => {
+      ch.addEventListener('click', () => {
+        const target = ch.getAttribute('data-folder');
+        if (target && folderInput) {
+          folderInput.value = target;
+          folderInput.focus();
+        }
+      });
+    });
+
+    const closeModal = () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      overlay.classList.add('is-closing');
+      setTimeout(() => {
+        if (overlay.parentNode) {
+          overlay.parentNode.removeChild(overlay);
+        }
+      }, 180);
+    };
+
+    const handleConfirm = () => {
+      const chosenFolder = folderInput ? folderInput.value.trim() || 'Gemini' : 'Gemini';
+      const chosenTitle = titleInput ? titleInput.value.trim() || title : title;
+      const setAsDefault = setDefaultCheckbox ? setDefaultCheckbox.checked : false;
+      closeModal();
+      if (onConfirm) {
+        onConfirm({ folder: chosenFolder, title: chosenTitle, setAsDefault });
+      }
+    };
+
+    const handleCancel = () => {
+      closeModal();
+      if (onCancel) onCancel();
+    };
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleCancel();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        handleConfirm();
+      }
+    };
+
+    // Close when clicking outside card (on overlay backdrop)
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        handleCancel();
+      }
+    });
+
+    if (closeBtn) closeBtn.addEventListener('click', handleCancel);
+    if (cancelBtn) cancelBtn.addEventListener('click', handleCancel);
+    if (confirmBtn) confirmBtn.addEventListener('click', handleConfirm);
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    // Auto-focus folder input
+    setTimeout(() => {
+      if (folderInput) {
+        folderInput.focus();
+        folderInput.select();
+      }
+    }, 60);
   },
 
   // Render list of items into TOC list container
