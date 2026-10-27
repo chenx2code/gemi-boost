@@ -61,7 +61,8 @@ GemiBoost.App = {
     GemiBoost.UI.ensureDrawerUI({
       onClose: () => this.toggleCatalog(false),
       onSync: () => this.handleSync(),
-      onExport: () => this.handleExport()
+      onExport: () => this.handleExport(),
+      onObsidian: () => this.handleObsidianExport()
     });
   },
 
@@ -69,6 +70,13 @@ GemiBoost.App = {
   handleExport: function () {
     if (GemiBoost.Exporter) {
       GemiBoost.Exporter.exportToMarkdown();
+    }
+  },
+
+  // Trigger conversation export directly to Obsidian
+  handleObsidianExport: function () {
+    if (GemiBoost.Exporter && GemiBoost.Exporter.exportToObsidian) {
+      GemiBoost.Exporter.exportToObsidian();
     }
   },
 

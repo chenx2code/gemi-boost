@@ -261,7 +261,7 @@ GemiBoost.Storage = {
     if (this.isContextValid()) {
       try {
         const storage = chrome.storage.local || chrome.storage.sync;
-        storage.get([key, 'includeLink', 'includeAccount', 'includeThinking'], (res) => {
+        storage.get([key, 'includeLink', 'includeAccount', 'includeThinking', 'obsidianFolder', 'obsidianVault', 'obsidianSilent'], (res) => {
           if (!res) return callback(defaults);
           if (res[key] && typeof res[key] === 'object') {
             return callback({ ...defaults, ...res[key] });
@@ -269,7 +269,10 @@ GemiBoost.Storage = {
           const settings = {
             includeLink: res.includeLink !== undefined ? !!res.includeLink : defaults.includeLink,
             includeAccount: res.includeAccount !== undefined ? !!res.includeAccount : defaults.includeAccount,
-            includeThinking: res.includeThinking !== undefined ? !!res.includeThinking : defaults.includeThinking
+            includeThinking: res.includeThinking !== undefined ? !!res.includeThinking : defaults.includeThinking,
+            obsidianFolder: res.obsidianFolder !== undefined ? String(res.obsidianFolder) : defaults.obsidianFolder,
+            obsidianVault: res.obsidianVault !== undefined ? String(res.obsidianVault) : defaults.obsidianVault,
+            obsidianSilent: res.obsidianSilent !== undefined ? !!res.obsidianSilent : defaults.obsidianSilent
           };
           callback(settings);
         });

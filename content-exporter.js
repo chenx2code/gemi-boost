@@ -354,5 +354,132 @@ GemiBoost.Exporter = {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     }, 100);
+  },
+
+  // Main entry point for exporting conversation directly to Obsidian
+  exportToObsidian: async function () {
+    if (this.isExporting) return;
+
+    const chatId = GemiBoost.Utils.getChatId();
+    if (!chatId) {
+      console.warn('[GemiBoost] Not on an active chat page.');
+      return;
+    }
+
+    if (GemiBoost.Sync && GemiBoost.Sync.isCurrentlySyncing()) {
+      if (GemiBoost.UI && GemiBoost.UI.setObsidianButtonState) {
+        GemiBoost.UI.setObsidianButtonState('syncing', '正在同步历史记录中，请稍候...');
+      }
+      return;
+    }
+
+    this.isExporting = true;
+    if (GemiBoost.UI && GemiBoost.UI.setObsidianButtonState) {
+      GemiBoost.UI.setObsidianButtonState('loading', '正在准备导入 Obsidian...');
+    }
+
+    try {
+      // 1. Ensure conversation is fully loaded from top to bottom
+      await this.ensureFullHistoryLoaded();
+
+      // Load user export preferences (from popup switches and settings)
+      const settings = await this.loadExportSettings();
+
+      // 2. Extract conversation turns from live DOM (delegated to Extractor)
+      const conversationData = this.extractConversationData(settings);
+      if (!conversationData || conversationData.turns.length === 0) {
+        console.warn('[GemiBoost] No conversation turns found to export to Obsidian.');
+        if (GemiBoost.UI && GemiBoost.UI.setObsidianButtonState) {
+          GemiBoost.UI.setObsidianButtonState('idle');
+        }
+        return;
+      }
+
+      // 3. Assemble Markdown document
+      const markdown = this.assembleMarkdown(conversationData, settings);
+
+      // 4. Sanitize title and compute note path inside Obsidian
+      const cleanTitle = this.sanitizeFilename(conversationData.title).replace(/\.md$/i, '');
+      const rawFolder = typeof settings.obsidianFolder === 'string' ? settings.obsidianFolder.trim() : 'Gemini';
+      const folder = rawFolder.replace(/^[\/\\\\]+|[\/\\\\]+$/g, '');
+      const notePath = folder ? `${folder}/${cleanTitle}` : cleanTitle;
+
+      // 5. Copy Markdown to clipboard (Official Obsidian 1.7.2+ clipboard-transit pattern)
+      await this.writeToClipboard(markdown);
+
+      // 6. Build official Obsidian URI scheme parameters
+      const params = new URLSearchParams();
+      params.append('name', notePath);
+      params.append('clipboard', 'true');
+
+      if (settings.obsidianVault && settings.obsidianVault.trim()) {
+        params.append('vault', settings.obsidianVault.trim());
+      }
+      if (settings.obsidianSilent !== false) {
+        params.append('silent', 'true');
+      }
+
+      const obsidianUri = `obsidian://new?${params.toString()}`;
+
+      // 7. Trigger native URI dispatch
+      this.triggerObsidianUri(obsidianUri);
+
+      if (GemiBoost.UI && GemiBoost.UI.setObsidianButtonState) {
+        GemiBoost.UI.setObsidianButtonState('success', `已导入到 Obsidian (${notePath})`);
+        setTimeout(() => {
+          GemiBoost.UI.setObsidianButtonState('idle');
+        }, GemiBoost.Config.TIMING.EXPORT_FEEDBACK_MS || 1500);
+      }
+    } catch (err) {
+      console.error('[GemiBoost] Error during Obsidian export:', err);
+      if (GemiBoost.UI && GemiBoost.UI.setObsidianButtonState) {
+        GemiBoost.UI.setObsidianButtonState('idle');
+      }
+    } finally {
+      this.isExporting = false;
+    }
+  },
+
+  // Safely write text to system clipboard with fallback
+  writeToClipboard: async function (text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return;
+      } catch (err) {
+        console.warn('[GemiBoost] navigator.clipboard.writeText failed, falling back to textarea execCommand:', err);
+      }
+    }
+
+    // Fallback using document.execCommand('copy')
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.top = '-9999px';
+    textarea.style.left = '-9999px';
+    textarea.setAttribute('readonly', '');
+    document.body.appendChild(textarea);
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+    const successful = document.execCommand('copy');
+    document.body.removeChild(textarea);
+
+    if (!successful) {
+      throw new Error('Failed to copy Markdown content to clipboard.');
+    }
+  },
+
+  // Trigger Obsidian URI dispatch via hidden link click
+  triggerObsidianUri: function (uri) {
+    const a = document.createElement('a');
+    a.href = uri;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      if (a.parentNode) {
+        document.body.removeChild(a);
+      }
+    }, 150);
   }
 };

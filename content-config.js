@@ -11,7 +11,8 @@ GemiBoost.Config = {
     LIST: 'gemiboost-toc-list',
     TOGGLE_BTN: 'gemiboost-toc-toggle',
     SYNC_BTN: 'gemiboost-toc-sync-btn',
-    EXPORT_BTN: 'gemiboost-toc-export-btn'
+    EXPORT_BTN: 'gemiboost-toc-export-btn',
+    OBSIDIAN_BTN: 'gemiboost-toc-obsidian-btn'
   },
 
   // DOM selectors for Gemini Web UI
@@ -90,7 +91,10 @@ GemiBoost.Config = {
     DEFAULTS: {
       includeLink: false,
       includeAccount: false,
-      includeThinking: false
+      includeThinking: false,
+      obsidianFolder: 'Gemini',
+      obsidianVault: '',
+      obsidianSilent: true
     }
   }
 };

@@ -213,6 +213,47 @@ body {
   margin: 0 14px;
 }
 
+/* Setting Field Row (Text Inputs) */
+.setting-field-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+}
+
+.setting-leading-icon.obsidian-icon {
+  color: #7c3aed;
+  background-color: rgba(124, 58, 237, 0.12);
+}
+
+.input-container {
+  flex-shrink: 0;
+  width: 105px;
+}
+
+.m3-text-input {
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--md-sys-color-on-surface);
+  background-color: var(--md-sys-color-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 8px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.m3-text-input:focus {
+  border-color: var(--md-sys-color-primary);
+  box-shadow: 0 0 0 2px rgba(11, 87, 208, 0.15);
+}
+
+.m3-text-input::placeholder {
+  color: var(--md-sys-color-on-surface-variant);
+  opacity: 0.6;
+}
+
 /* Material Design 3 Switch */
 .switch-container {
   position: relative;

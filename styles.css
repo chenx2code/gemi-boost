@@ -227,7 +227,8 @@ body[data-theme="dark"],
 
 .gemiboost-toc-close,
 .gemiboost-toc-sync-btn,
-.gemiboost-toc-export-btn {
+.gemiboost-toc-export-btn,
+.gemiboost-toc-obsidian-btn {
   background: transparent;
   border: none;
   cursor: pointer;
@@ -251,19 +252,38 @@ body[data-theme="dark"],
   color: var(--gb-btn-hover-color);
 }
 
+.gemiboost-toc-obsidian-btn:hover {
+  background-color: rgba(124, 58, 237, 0.12);
+  color: #7c3aed;
+}
+
+@media (prefers-color-scheme: dark) {
+  .gemiboost-toc-obsidian-btn:hover {
+    background-color: rgba(167, 139, 250, 0.16);
+    color: #a78bfa;
+  }
+}
+
 .gemiboost-toc-close:focus-visible,
 .gemiboost-toc-sync-btn:focus-visible,
-.gemiboost-toc-export-btn:focus-visible {
+.gemiboost-toc-export-btn:focus-visible,
+.gemiboost-toc-obsidian-btn:focus-visible {
   outline: 2px solid var(--gb-primary);
   outline-offset: 1px;
 }
 
 /* Button States: Syncing / Loading */
 .gemiboost-toc-sync-btn.is-syncing,
-.gemiboost-toc-export-btn.is-loading {
+.gemiboost-toc-export-btn.is-loading,
+.gemiboost-toc-obsidian-btn.is-loading {
   color: var(--gb-primary);
   background-color: var(--gb-primary-container);
   cursor: default;
+}
+
+.gemiboost-toc-obsidian-btn.is-loading {
+  color: #7c3aed;
+  background-color: rgba(124, 58, 237, 0.12);
 }
 
 /* Spinner GPU Animation */
@@ -286,14 +306,16 @@ body[data-theme="dark"],
 
 /* Button States: Success Completed */
 .gemiboost-toc-sync-btn.is-synced,
-.gemiboost-toc-export-btn.is-success {
+.gemiboost-toc-export-btn.is-success,
+.gemiboost-toc-obsidian-btn.is-success {
   color: var(--gb-success-color);
   background-color: var(--gb-success-bg);
   cursor: default;
 }
 
 .gemiboost-toc-sync-btn.is-synced svg,
-.gemiboost-toc-export-btn.is-success svg {
+.gemiboost-toc-export-btn.is-success svg,
+.gemiboost-toc-obsidian-btn.is-success svg {
   width: 16px;
   height: 16px;
   display: block;

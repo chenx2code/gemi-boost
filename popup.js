@@ -19,6 +19,11 @@ const I18N_STRINGS = {
     accountDesc: '导出 Markdown 时附带当前账号信息',
     thinkingTitle: '包含思考过程',
     thinkingDesc: '导出 Task 模式或推理模型的思考链',
+    obsidianSectionTitle: 'Obsidian 导入设置',
+    obsidianFolderTitle: '目标文件夹',
+    obsidianFolderDesc: '保存在 Vault 中的文件夹路径',
+    obsidianVaultTitle: '指定 Vault 库名',
+    obsidianVaultDesc: '留空则写入当前正在打开的库',
     autoSaveText: '更改已自动保存',
     savedFeedback: '设置已保存'
   },
@@ -30,6 +35,11 @@ const I18N_STRINGS = {
     accountDesc: 'Add Google account email to Markdown header',
     thinkingTitle: 'Include thinking process',
     thinkingDesc: 'Export Task and reasoning thoughts',
+    obsidianSectionTitle: 'Obsidian Import',
+    obsidianFolderTitle: 'Target folder',
+    obsidianFolderDesc: 'Folder path inside your vault',
+    obsidianVaultTitle: 'Vault name',
+    obsidianVaultDesc: 'Leave blank for active vault',
     autoSaveText: 'Changes saved automatically',
     savedFeedback: 'Settings saved'
   }
@@ -47,6 +57,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const accountDesc = document.getElementById('accountDesc');
   const thinkingTitle = document.getElementById('thinkingTitle');
   const thinkingDesc = document.getElementById('thinkingDesc');
+  const obsidianSectionTitle = document.getElementById('obsidianSectionTitle');
+  const obsidianFolder = document.getElementById('obsidianFolder');
+  const obsidianFolderTitle = document.getElementById('obsidianFolderTitle');
+  const obsidianFolderDesc = document.getElementById('obsidianFolderDesc');
+  const obsidianVault = document.getElementById('obsidianVault');
+  const obsidianVaultTitle = document.getElementById('obsidianVaultTitle');
+  const obsidianVaultDesc = document.getElementById('obsidianVaultDesc');
   const statusIndicator = document.getElementById('statusIndicator');
   const statusText = document.getElementById('statusText');
 
@@ -71,6 +88,11 @@ document.addEventListener('DOMContentLoaded', () => {
   if (accountDesc) accountDesc.textContent = strings.accountDesc;
   if (thinkingTitle) thinkingTitle.textContent = strings.thinkingTitle;
   if (thinkingDesc) thinkingDesc.textContent = strings.thinkingDesc;
+  if (obsidianSectionTitle) obsidianSectionTitle.textContent = strings.obsidianSectionTitle;
+  if (obsidianFolderTitle) obsidianFolderTitle.textContent = strings.obsidianFolderTitle;
+  if (obsidianFolderDesc) obsidianFolderDesc.textContent = strings.obsidianFolderDesc;
+  if (obsidianVaultTitle) obsidianVaultTitle.textContent = strings.obsidianVaultTitle;
+  if (obsidianVaultDesc) obsidianVaultDesc.textContent = strings.obsidianVaultDesc;
   if (statusText) statusText.textContent = strings.autoSaveText;
 
   // Retrieve version dynamically from extension manifest
@@ -85,6 +107,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Populate UI inputs from settings object
+  const applySettingsToUI = (settings) => {
+    if (linkToggle) linkToggle.checked = !!settings.includeLink;
+    if (accountToggle) accountToggle.checked = !!settings.includeAccount;
+    if (thinkingToggle) thinkingToggle.checked = !!settings.includeThinking;
+    if (obsidianFolder) obsidianFolder.value = settings.obsidianFolder || DEFAULT_SETTINGS.obsidianFolder || 'Gemini';
+    if (obsidianVault) obsidianVault.value = settings.obsidianVault || '';
+  };
+
   // Load preferences from local storage cache
   const storage =
     typeof chrome !== 'undefined' && chrome.storage
@@ -92,7 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
       : null;
 
   if (storage) {
-    storage.get([STORAGE_KEY, 'includeLink', 'includeAccount', 'includeThinking'], (res) => {
+    storage.get([STORAGE_KEY, 'includeLink', 'includeAccount', 'includeThinking', 'obsidianFolder', 'obsidianVault'], (res) => {
       let settings = DEFAULT_SETTINGS;
       if (res && res[STORAGE_KEY] && typeof res[STORAGE_KEY] === 'object') {
         settings = { ...DEFAULT_SETTINGS, ...res[STORAGE_KEY] };
@@ -100,24 +131,20 @@ document.addEventListener('DOMContentLoaded', () => {
         settings = {
           includeLink: res.includeLink !== undefined ? !!res.includeLink : DEFAULT_SETTINGS.includeLink,
           includeAccount: res.includeAccount !== undefined ? !!res.includeAccount : DEFAULT_SETTINGS.includeAccount,
-          includeThinking: res.includeThinking !== undefined ? !!res.includeThinking : DEFAULT_SETTINGS.includeThinking
+          includeThinking: res.includeThinking !== undefined ? !!res.includeThinking : DEFAULT_SETTINGS.includeThinking,
+          obsidianFolder: res.obsidianFolder !== undefined ? String(res.obsidianFolder) : DEFAULT_SETTINGS.obsidianFolder,
+          obsidianVault: res.obsidianVault !== undefined ? String(res.obsidianVault) : DEFAULT_SETTINGS.obsidianVault
         };
       }
-      if (linkToggle) linkToggle.checked = !!settings.includeLink;
-      if (accountToggle) accountToggle.checked = !!settings.includeAccount;
-      if (thinkingToggle) thinkingToggle.checked = !!settings.includeThinking;
+      applySettingsToUI(settings);
     });
   } else {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       const items = raw ? JSON.parse(raw) : DEFAULT_SETTINGS;
-      if (linkToggle) linkToggle.checked = !!items.includeLink;
-      if (accountToggle) accountToggle.checked = !!items.includeAccount;
-      if (thinkingToggle) thinkingToggle.checked = !!items.includeThinking;
+      applySettingsToUI(items);
     } catch (e) {
-      if (linkToggle) linkToggle.checked = DEFAULT_SETTINGS.includeLink;
-      if (accountToggle) accountToggle.checked = DEFAULT_SETTINGS.includeAccount;
-      if (thinkingToggle) thinkingToggle.checked = DEFAULT_SETTINGS.includeThinking;
+      applySettingsToUI(DEFAULT_SETTINGS);
     }
   }
 
@@ -141,7 +168,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const newSettings = {
       includeLink: linkToggle ? linkToggle.checked : false,
       includeAccount: accountToggle ? accountToggle.checked : false,
-      includeThinking: thinkingToggle ? thinkingToggle.checked : false
+      includeThinking: thinkingToggle ? thinkingToggle.checked : false,
+      obsidianFolder: obsidianFolder ? obsidianFolder.value.trim() || 'Gemini' : 'Gemini',
+      obsidianVault: obsidianVault ? obsidianVault.value.trim() : ''
     };
 
     if (typeof chrome !== 'undefined' && chrome.storage) {
@@ -165,4 +194,12 @@ document.addEventListener('DOMContentLoaded', () => {
   if (linkToggle) linkToggle.addEventListener('change', saveSettings);
   if (accountToggle) accountToggle.addEventListener('change', saveSettings);
   if (thinkingToggle) thinkingToggle.addEventListener('change', saveSettings);
+  if (obsidianFolder) {
+    obsidianFolder.addEventListener('change', saveSettings);
+    obsidianFolder.addEventListener('blur', saveSettings);
+  }
+  if (obsidianVault) {
+    obsidianVault.addEventListener('change', saveSettings);
+    obsidianVault.addEventListener('blur', saveSettings);
+  }
 });

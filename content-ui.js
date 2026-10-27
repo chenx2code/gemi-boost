@@ -17,6 +17,10 @@ const I18N_UI = {
     exportSyncing: '正在同步历史记录以供导出...',
     exportLoading: '正在导出 Markdown 文件...',
     exportSuccess: '导出成功！',
+    obsidianIdle: '一键导入至 Obsidian',
+    obsidianSyncing: '正在同步历史记录以供导入...',
+    obsidianLoading: '正在准备导入 Obsidian...',
+    obsidianSuccess: '已导入至 Obsidian！',
     closeTitle: '关闭目录',
     toggleTitle: '展开/收起目录',
     imageLabel: '图片',
@@ -34,6 +38,10 @@ const I18N_UI = {
     exportSyncing: 'Syncing history for export...',
     exportLoading: 'Exporting Markdown file...',
     exportSuccess: 'Export complete!',
+    obsidianIdle: 'Export conversation to Obsidian',
+    obsidianSyncing: 'Syncing history for Obsidian...',
+    obsidianLoading: 'Importing to Obsidian...',
+    obsidianSuccess: 'Imported to Obsidian!',
     closeTitle: 'Close Table of Contents',
     toggleTitle: 'Toggle Table of Contents',
     imageLabel: 'Image',
@@ -67,7 +75,7 @@ GemiBoost.UI = {
 
   // Ensure the main TOC sidebar drawer is injected into bard-sidenav-container
   ensureDrawerUI: function (callbacks = {}) {
-    const { onClose, onSync, onExport } = callbacks;
+    const { onClose, onSync, onExport, onObsidian } = callbacks;
     const containerId = GemiBoost.Config.DOM_IDS.CONTAINER;
     let container = document.getElementById(containerId);
     if (container) return container;
@@ -91,6 +99,11 @@ GemiBoost.UI = {
         <span id="gemiboost-toc-badge" class="gemiboost-toc-badge is-hidden">0</span>
       </div>
       <div class="gemiboost-toc-header-actions">
+        <button id="${GemiBoost.Config.DOM_IDS.OBSIDIAN_BTN}" class="gemiboost-toc-obsidian-btn" title="${strings.obsidianIdle}" aria-label="${strings.obsidianIdle}" data-state="idle">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M12 2.2L4.5 8.5 8.2 21.8h7.6L19.5 8.5 12 2.2zm0 3.3l4.5 3.8-2 8.7h-5l-2-8.7 4.5-3.8z"/>
+          </svg>
+        </button>
         <button id="${GemiBoost.Config.DOM_IDS.EXPORT_BTN}" class="gemiboost-toc-export-btn" title="${strings.exportIdle}" aria-label="${strings.exportIdle}" data-state="idle">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
             <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
@@ -113,6 +126,13 @@ GemiBoost.UI = {
     closeBtn.addEventListener('click', () => {
       if (onClose) onClose();
     });
+
+    const obsidianBtn = header.querySelector(`#${GemiBoost.Config.DOM_IDS.OBSIDIAN_BTN}`);
+    if (obsidianBtn) {
+      obsidianBtn.addEventListener('click', () => {
+        if (onObsidian) onObsidian();
+      });
+    }
 
     const syncBtn = header.querySelector(`#${GemiBoost.Config.DOM_IDS.SYNC_BTN}`);
     syncBtn.addEventListener('click', () => {
@@ -440,6 +460,55 @@ GemiBoost.UI = {
 
     exportBtn.setAttribute('title', finalTooltip);
     exportBtn.setAttribute('aria-label', finalTooltip);
+  },
+
+  // Update Obsidian export button state in top header
+  setObsidianButtonState: function (state, tooltip) {
+    const obsidianBtn = document.getElementById(GemiBoost.Config.DOM_IDS.OBSIDIAN_BTN);
+    if (!obsidianBtn) return;
+
+    const strings = this.getStrings();
+    const defaultTooltip =
+      state === 'syncing'
+        ? strings.obsidianSyncing
+        : state === 'loading'
+        ? strings.obsidianLoading
+        : state === 'success'
+        ? strings.obsidianSuccess
+        : strings.obsidianIdle;
+
+    const finalTooltip = tooltip || defaultTooltip;
+    obsidianBtn.dataset.state = state;
+
+    if (state === 'syncing' || state === 'loading') {
+      obsidianBtn.classList.remove('is-success');
+      obsidianBtn.classList.add('is-loading');
+      obsidianBtn.innerHTML = `
+        <span class="gemiboost-spinner-composited">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <circle cx="12" cy="12" r="9" stroke-dasharray="40 18" />
+          </svg>
+        </span>
+      `;
+    } else if (state === 'success') {
+      obsidianBtn.classList.remove('is-loading');
+      obsidianBtn.classList.add('is-success');
+      obsidianBtn.innerHTML = `
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+          <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+        </svg>
+      `;
+    } else {
+      obsidianBtn.classList.remove('is-loading', 'is-success');
+      obsidianBtn.innerHTML = `
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+          <path d="M12 2.2L4.5 8.5 8.2 21.8h7.6L19.5 8.5 12 2.2zm0 3.3l4.5 3.8-2 8.7h-5l-2-8.7 4.5-3.8z"/>
+        </svg>
+      `;
+    }
+
+    obsidianBtn.setAttribute('title', finalTooltip);
+    obsidianBtn.setAttribute('aria-label', finalTooltip);
   },
 
   // Render list of items into TOC list container
