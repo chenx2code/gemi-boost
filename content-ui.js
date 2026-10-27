@@ -21,6 +21,13 @@ const I18N_UI = {
     obsidianSyncing: '正在同步历史记录以供导入...',
     obsidianLoading: '正在准备导入 Obsidian...',
     obsidianSuccess: '已导入至 Obsidian！',
+    obsidianModalTitle: '导入至 Obsidian',
+    obsidianModalFolderLabel: '目标文件夹',
+    obsidianModalFolderPlaceholder: '例如: Gemini 或 Work/AI',
+    obsidianModalTitleLabel: '笔记标题',
+    obsidianModalRecentLabel: '快捷历史标签:',
+    cancelBtn: '取消',
+    confirmExportBtn: '确认导入',
     closeTitle: '关闭目录',
     toggleTitle: '展开/收起目录',
     imageLabel: '图片',
@@ -42,6 +49,13 @@ const I18N_UI = {
     obsidianSyncing: 'Syncing history for Obsidian...',
     obsidianLoading: 'Importing to Obsidian...',
     obsidianSuccess: 'Imported to Obsidian!',
+    obsidianModalTitle: 'Import to Obsidian',
+    obsidianModalFolderLabel: 'Target Folder',
+    obsidianModalFolderPlaceholder: 'e.g. Gemini or Work/AI',
+    obsidianModalTitleLabel: 'Note Title',
+    obsidianModalRecentLabel: 'Recent folders:',
+    cancelBtn: 'Cancel',
+    confirmExportBtn: 'Export',
     closeTitle: 'Close Table of Contents',
     toggleTitle: 'Toggle Table of Contents',
     imageLabel: 'Image',
@@ -509,6 +523,170 @@ GemiBoost.UI = {
 
     obsidianBtn.setAttribute('title', finalTooltip);
     obsidianBtn.setAttribute('aria-label', finalTooltip);
+  },
+
+  // Show Material Design 3 interactive modal for Obsidian folder and note title confirmation
+  showObsidianModal: function (options = {}) {
+    const { title = '', defaultFolder = 'Gemini', historyFolders = [], onConfirm, onCancel } = options;
+    const strings = this.getStrings();
+
+    // Close any existing modal first
+    const existing = document.getElementById('gemiboost-obsidian-modal');
+    if (existing && existing.parentNode) {
+      existing.parentNode.removeChild(existing);
+    }
+
+    const overlay = document.createElement('div');
+    overlay.id = 'gemiboost-obsidian-modal';
+    overlay.className = 'gemiboost-modal-overlay';
+
+    // Build history chips HTML
+    const foldersToDisplay = Array.from(new Set([defaultFolder, ...(Array.isArray(historyFolders) ? historyFolders : [])]))
+      .filter(Boolean)
+      .slice(0, 5);
+
+    let chipsHtml = '';
+    if (foldersToDisplay.length > 0) {
+      const chipButtons = foldersToDisplay
+        .map(
+          (f) =>
+            `<button type="button" class="gemiboost-modal-chip" data-folder="${f}">📁 ${f}</button>`
+        )
+        .join('');
+      chipsHtml = `
+        <div class="gemiboost-modal-chips-row">
+          <span class="gemiboost-modal-chips-label">${strings.obsidianModalRecentLabel}</span>
+          <div class="gemiboost-modal-chips-list">${chipButtons}</div>
+        </div>
+      `;
+    }
+
+    overlay.innerHTML = `
+      <div class="gemiboost-modal-card" role="dialog" aria-modal="true" aria-labelledby="gemiboost-modal-title">
+        <div class="gemiboost-modal-header">
+          <div class="gemiboost-modal-brand">
+            <span class="gemiboost-modal-icon">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                <path d="M12 2.2L4.5 8.5 8.2 21.8h7.6L19.5 8.5 12 2.2zm0 3.3l4.5 3.8-2 8.7h-5l-2-8.7 4.5-3.8z"/>
+              </svg>
+            </span>
+            <span id="gemiboost-modal-title" class="gemiboost-modal-title">${strings.obsidianModalTitle}</span>
+          </div>
+          <button type="button" class="gemiboost-modal-close" aria-label="${strings.closeTitle}">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+              <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="gemiboost-modal-body">
+          <!-- Folder input -->
+          <div class="gemiboost-modal-field">
+            <label for="gemiboost-input-folder" class="gemiboost-modal-label">${strings.obsidianModalFolderLabel}</label>
+            <div class="gemiboost-modal-input-box">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+              </svg>
+              <input type="text" id="gemiboost-input-folder" class="gemiboost-modal-input" placeholder="${strings.obsidianModalFolderPlaceholder}" value="${defaultFolder || 'Gemini'}" spellcheck="false" autocomplete="off">
+            </div>
+          </div>
+
+          <!-- History chips -->
+          ${chipsHtml}
+
+          <!-- Note Title input -->
+          <div class="gemiboost-modal-field" style="margin-top: 14px;">
+            <label for="gemiboost-input-title" class="gemiboost-modal-label">${strings.obsidianModalTitleLabel}</label>
+            <div class="gemiboost-modal-input-box">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+              </svg>
+              <input type="text" id="gemiboost-input-title" class="gemiboost-modal-input" value="${title || ''}" spellcheck="false" autocomplete="off">
+            </div>
+          </div>
+        </div>
+
+        <div class="gemiboost-modal-footer">
+          <button type="button" class="gemiboost-modal-btn gemiboost-modal-btn-cancel">${strings.cancelBtn}</button>
+          <button type="button" class="gemiboost-modal-btn gemiboost-modal-btn-confirm">${strings.confirmExportBtn}</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const folderInput = overlay.querySelector('#gemiboost-input-folder');
+    const titleInput = overlay.querySelector('#gemiboost-input-title');
+    const cancelBtn = overlay.querySelector('.gemiboost-modal-btn-cancel');
+    const confirmBtn = overlay.querySelector('.gemiboost-modal-btn-confirm');
+    const closeBtn = overlay.querySelector('.gemiboost-modal-close');
+
+    // Click history chips to quickly fill folder
+    const chips = overlay.querySelectorAll('.gemiboost-modal-chip');
+    chips.forEach((ch) => {
+      ch.addEventListener('click', () => {
+        const target = ch.getAttribute('data-folder');
+        if (target && folderInput) {
+          folderInput.value = target;
+          folderInput.focus();
+        }
+      });
+    });
+
+    const closeModal = () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      overlay.classList.add('is-closing');
+      setTimeout(() => {
+        if (overlay.parentNode) {
+          overlay.parentNode.removeChild(overlay);
+        }
+      }, 180);
+    };
+
+    const handleConfirm = () => {
+      const chosenFolder = folderInput ? folderInput.value.trim() || 'Gemini' : 'Gemini';
+      const chosenTitle = titleInput ? titleInput.value.trim() || title : title;
+      closeModal();
+      if (onConfirm) {
+        onConfirm({ folder: chosenFolder, title: chosenTitle });
+      }
+    };
+
+    const handleCancel = () => {
+      closeModal();
+      if (onCancel) onCancel();
+    };
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleCancel();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        handleConfirm();
+      }
+    };
+
+    // Close when clicking outside card (on overlay backdrop)
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        handleCancel();
+      }
+    });
+
+    if (closeBtn) closeBtn.addEventListener('click', handleCancel);
+    if (cancelBtn) cancelBtn.addEventListener('click', handleCancel);
+    if (confirmBtn) confirmBtn.addEventListener('click', handleConfirm);
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    // Auto-focus folder input
+    setTimeout(() => {
+      if (folderInput) {
+        folderInput.focus();
+        folderInput.select();
+      }
+    }, 60);
   },
 
   // Render list of items into TOC list container

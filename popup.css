@@ -219,6 +219,19 @@ body {
   align-items: center;
   gap: 12px;
   padding: 10px 14px;
+  transition: opacity 0.25s cubic-bezier(0.2, 0, 0, 1), filter 0.25s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.setting-field-row.is-disabled {
+  opacity: 0.42;
+  pointer-events: none;
+  cursor: not-allowed;
+  filter: grayscale(0.5);
+}
+
+.setting-field-row.is-disabled .m3-text-input {
+  background-color: var(--md-sys-color-surface-container-high);
+  cursor: not-allowed;
 }
 
 .setting-leading-icon.obsidian-icon {

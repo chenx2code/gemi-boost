@@ -75,9 +75,34 @@ GemiBoost.App = {
 
   // Trigger conversation export directly to Obsidian
   handleObsidianExport: function () {
-    if (GemiBoost.Exporter && GemiBoost.Exporter.exportToObsidian) {
+    if (!GemiBoost.Exporter || !GemiBoost.Exporter.exportToObsidian) return;
+
+    if (!GemiBoost.Storage || !GemiBoost.Storage.loadExportSettings) {
       GemiBoost.Exporter.exportToObsidian();
+      return;
     }
+
+    GemiBoost.Storage.loadExportSettings((settings) => {
+      if (settings && settings.obsidianPromptFolder && GemiBoost.UI && GemiBoost.UI.showObsidianModal) {
+        const title = GemiBoost.Extractor ? GemiBoost.Extractor.extractChatTitle() : '';
+        const defaultFolder = (settings.obsidianFolderHistory && settings.obsidianFolderHistory[0]) || settings.obsidianFolder || 'Gemini';
+        const historyFolders = settings.obsidianFolderHistory || [];
+
+        GemiBoost.UI.showObsidianModal({
+          title,
+          defaultFolder,
+          historyFolders,
+          onConfirm: ({ folder, title: chosenTitle }) => {
+            if (GemiBoost.Storage.addObsidianFolderHistory) {
+              GemiBoost.Storage.addObsidianFolderHistory(folder);
+            }
+            GemiBoost.Exporter.exportToObsidian({ folder, title: chosenTitle });
+          }
+        });
+      } else {
+        GemiBoost.Exporter.exportToObsidian();
+      }
+    });
   },
 
   // Mount or reposition toggle button in top bar

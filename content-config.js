@@ -94,7 +94,9 @@ GemiBoost.Config = {
       includeThinking: false,
       obsidianFolder: 'Gemini',
       obsidianVault: '',
-      obsidianSilent: true
+      obsidianSilent: true,
+      obsidianPromptFolder: false,
+      obsidianFolderHistory: ['Gemini']
     }
   }
 };

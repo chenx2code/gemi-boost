@@ -357,7 +357,7 @@ GemiBoost.Exporter = {
   },
 
   // Main entry point for exporting conversation directly to Obsidian
-  exportToObsidian: async function () {
+  exportToObsidian: async function (options = {}) {
     if (this.isExporting) return;
 
     const chatId = GemiBoost.Utils.getChatId();
@@ -399,21 +399,24 @@ GemiBoost.Exporter = {
       const markdown = this.assembleMarkdown(conversationData, settings);
 
       // 4. Sanitize title and compute note path inside Obsidian
-      const cleanTitle = this.sanitizeFilename(conversationData.title).replace(/\.md$/i, '');
-      const rawFolder = typeof settings.obsidianFolder === 'string' ? settings.obsidianFolder.trim() : 'Gemini';
-      const folder = rawFolder.replace(/^[\/\\\\]+|[\/\\\\]+$/g, '');
+      const rawTitle = options.title !== undefined && options.title.trim() ? options.title : conversationData.title;
+      const cleanTitle = this.sanitizeFilename(rawTitle).replace(/\.md$/i, '');
+      const rawFolder = options.folder !== undefined ? String(options.folder) : (typeof settings.obsidianFolder === 'string' ? settings.obsidianFolder : 'Gemini');
+      const folder = rawFolder.trim().replace(/^[\/\\\\]+|[\/\\\\]+$/g, '');
       const notePath = folder ? `${folder}/${cleanTitle}` : cleanTitle;
 
       // 5. Copy Markdown to clipboard (Official Obsidian 1.7.2+ clipboard-transit pattern)
       await this.writeToClipboard(markdown);
 
       // 6. Build official Obsidian URI scheme parameters
+      // Using 'file' parameter ensures Obsidian resolves subfolder structures
       const params = new URLSearchParams();
-      params.append('name', notePath);
+      params.append('file', notePath);
       params.append('clipboard', 'true');
 
-      if (settings.obsidianVault && settings.obsidianVault.trim()) {
-        params.append('vault', settings.obsidianVault.trim());
+      const targetVault = options.vault !== undefined ? options.vault : settings.obsidianVault;
+      if (targetVault && targetVault.trim()) {
+        params.append('vault', targetVault.trim());
       }
       if (settings.obsidianSilent !== false) {
         params.append('silent', 'true');
