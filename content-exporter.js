@@ -35,7 +35,11 @@ GemiBoost.Exporter = {
 
     try {
       // 1. Ensure conversation is fully loaded from top to bottom
-      await this.ensureFullHistoryLoaded();
+      await this.ensureFullHistoryLoaded('markdown');
+
+      if (GemiBoost.UI) {
+        GemiBoost.UI.setExportButtonState('exporting', '正在组装对话内容...');
+      }
 
       // Load user export preferences (from popup switches)
       const settings = await this.loadExportSettings();
@@ -74,7 +78,7 @@ GemiBoost.Exporter = {
   },
 
   // Check and trigger sync if older turns might not be loaded into DOM
-  ensureFullHistoryLoaded: function () {
+  ensureFullHistoryLoaded: function (target = 'markdown') {
     return new Promise((resolve) => {
       const scroller = GemiBoost.Utils.getChatScrollContainer();
       if (!scroller) {
@@ -99,18 +103,29 @@ GemiBoost.Exporter = {
           return resolve();
         }
 
+        // Helper to update only the triggering button's state to prevent cross-contamination
+        const updateSyncUI = (count) => {
+          if (!GemiBoost.UI) return;
+          const msg = count ? `正在加载历史记录 (已加载 ${count} 条)...` : '正在同步更早的历史记录...';
+          if (target === 'obsidian') {
+            if (GemiBoost.UI.setObsidianButtonState) {
+              GemiBoost.UI.setObsidianButtonState('syncing', msg);
+            }
+          } else {
+            if (GemiBoost.UI.setExportButtonState) {
+              GemiBoost.UI.setExportButtonState('syncing', msg);
+            }
+          }
+        };
+
         // Otherwise (fresh page load or partially loaded), run the full sync loop
         // which scrolls up to the very first prompt.
-        if (GemiBoost.UI) {
-          GemiBoost.UI.setExportButtonState('syncing', '正在同步更早的历史记录...');
-        }
+        updateSyncUI();
 
         GemiBoost.Sync.triggerSync({
           silentUI: true,
           onBatchLoaded: (count) => {
-            if (GemiBoost.UI) {
-              GemiBoost.UI.setExportButtonState('syncing', `正在加载历史记录 (已加载 ${count} 条)...`);
-            }
+            updateSyncUI(count);
           },
           onComplete: (fullItems) => {
             if (chatId && fullItems && fullItems.length > 0 && GemiBoost.Storage) {
@@ -380,7 +395,11 @@ GemiBoost.Exporter = {
 
     try {
       // 1. Ensure conversation is fully loaded from top to bottom
-      await this.ensureFullHistoryLoaded();
+      await this.ensureFullHistoryLoaded('obsidian');
+
+      if (GemiBoost.UI && GemiBoost.UI.setObsidianButtonState) {
+        GemiBoost.UI.setObsidianButtonState('loading', '正在准备导入 Obsidian...');
+      }
 
       // Load user export preferences (from popup switches and settings)
       const settings = await this.loadExportSettings();
