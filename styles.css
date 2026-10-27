@@ -257,6 +257,17 @@ body[data-theme="dark"],
   color: #7c3aed;
 }
 
+/* Optical alignment: Solid filled Obsidian icon sized to match line-stroke icons */
+.gemiboost-toc-obsidian-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.gemiboost-toc-obsidian-btn .gemiboost-spinner-composited svg {
+  width: 16px;
+  height: 16px;
+}
+
 @media (prefers-color-scheme: dark) {
   .gemiboost-toc-obsidian-btn:hover {
     background-color: rgba(167, 139, 250, 0.16);
