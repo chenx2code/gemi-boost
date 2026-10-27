@@ -259,13 +259,16 @@ body[data-theme="dark"],
 
 /* Optical alignment: Solid filled Obsidian icon sized to match line-stroke icons */
 .gemiboost-toc-obsidian-btn svg {
-  width: 15px;
-  height: 15px;
+  width: 13.5px;
+  height: 13.5px;
+  transform: translateY(-0.5px);
 }
 
-.gemiboost-toc-obsidian-btn .gemiboost-spinner-composited svg {
+.gemiboost-toc-obsidian-btn .gemiboost-spinner-composited svg,
+.gemiboost-toc-obsidian-btn.is-success svg {
   width: 16px;
   height: 16px;
+  transform: none;
 }
 
 @media (prefers-color-scheme: dark) {
