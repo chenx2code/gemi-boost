@@ -389,8 +389,10 @@ GemiBoost.Exporter = {
     }
 
     this.isExporting = true;
+    const uiStrings = GemiBoost.UI && GemiBoost.UI.getStrings ? GemiBoost.UI.getStrings() : null;
+    const loadingMsg = uiStrings ? uiStrings.obsidianLoading : '正在准备导出至 Obsidian...';
     if (GemiBoost.UI && GemiBoost.UI.setObsidianButtonState) {
-      GemiBoost.UI.setObsidianButtonState('loading', '正在准备导入 Obsidian...');
+      GemiBoost.UI.setObsidianButtonState('loading', loadingMsg);
     }
 
     try {
@@ -398,7 +400,7 @@ GemiBoost.Exporter = {
       await this.ensureFullHistoryLoaded('obsidian');
 
       if (GemiBoost.UI && GemiBoost.UI.setObsidianButtonState) {
-        GemiBoost.UI.setObsidianButtonState('loading', '正在准备导入 Obsidian...');
+        GemiBoost.UI.setObsidianButtonState('loading', loadingMsg);
       }
 
       // Load user export preferences (from popup switches and settings)
@@ -447,7 +449,8 @@ GemiBoost.Exporter = {
       this.triggerObsidianUri(obsidianUri);
 
       if (GemiBoost.UI && GemiBoost.UI.setObsidianButtonState) {
-        GemiBoost.UI.setObsidianButtonState('success', `已导入到 Obsidian (${notePath})`);
+        const successPrefix = uiStrings ? uiStrings.obsidianSuccess.replace(/[！!]$/, '') : '已导出至 Obsidian';
+        GemiBoost.UI.setObsidianButtonState('success', `${successPrefix} (${notePath})`);
         setTimeout(() => {
           GemiBoost.UI.setObsidianButtonState('idle');
         }, GemiBoost.Config.TIMING.EXPORT_FEEDBACK_MS || 1500);
