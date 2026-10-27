@@ -26,6 +26,7 @@ const I18N_UI = {
     obsidianModalFolderPlaceholder: '例如: Gemini 或 Work/AI',
     obsidianModalTitleLabel: '笔记标题',
     obsidianModalRecentLabel: '快捷历史标签:',
+    obsidianModalSetDefault: '设为默认文件夹且不再提醒',
     cancelBtn: '取消',
     confirmExportBtn: '确认导入',
     closeTitle: '关闭目录',
@@ -54,6 +55,7 @@ const I18N_UI = {
     obsidianModalFolderPlaceholder: 'e.g. Gemini or Work/AI',
     obsidianModalTitleLabel: 'Note Title',
     obsidianModalRecentLabel: 'Recent folders:',
+    obsidianModalSetDefault: 'Set as default folder and do not ask again',
     cancelBtn: 'Cancel',
     confirmExportBtn: 'Export',
     closeTitle: 'Close Table of Contents',
@@ -580,8 +582,19 @@ GemiBoost.UI = {
         </div>
 
         <div class="gemiboost-modal-body">
-          <!-- Folder input -->
+          <!-- 1. Note Title input (Primary identity) -->
           <div class="gemiboost-modal-field">
+            <label for="gemiboost-input-title" class="gemiboost-modal-label">${strings.obsidianModalTitleLabel}</label>
+            <div class="gemiboost-modal-input-box">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+              </svg>
+              <input type="text" id="gemiboost-input-title" class="gemiboost-modal-input" value="${title || ''}" spellcheck="false" autocomplete="off">
+            </div>
+          </div>
+
+          <!-- 2. Target Folder input (Storage destination) -->
+          <div class="gemiboost-modal-field" style="margin-top: 14px;">
             <label for="gemiboost-input-folder" class="gemiboost-modal-label">${strings.obsidianModalFolderLabel}</label>
             <div class="gemiboost-modal-input-box">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
@@ -591,19 +604,14 @@ GemiBoost.UI = {
             </div>
           </div>
 
-          <!-- History chips -->
+          <!-- 3. History chips for folder -->
           ${chipsHtml}
 
-          <!-- Note Title input -->
-          <div class="gemiboost-modal-field" style="margin-top: 14px;">
-            <label for="gemiboost-input-title" class="gemiboost-modal-label">${strings.obsidianModalTitleLabel}</label>
-            <div class="gemiboost-modal-input-box">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
-              </svg>
-              <input type="text" id="gemiboost-input-title" class="gemiboost-modal-input" value="${title || ''}" spellcheck="false" autocomplete="off">
-            </div>
-          </div>
+          <!-- 4. Remember folder as default & don't ask again checkbox -->
+          <label class="gemiboost-modal-checkbox-row">
+            <input type="checkbox" id="gemiboost-input-setdefault" class="gemiboost-modal-checkbox">
+            <span class="gemiboost-modal-checkbox-label">${strings.obsidianModalSetDefault}</span>
+          </label>
         </div>
 
         <div class="gemiboost-modal-footer">
@@ -617,6 +625,7 @@ GemiBoost.UI = {
 
     const folderInput = overlay.querySelector('#gemiboost-input-folder');
     const titleInput = overlay.querySelector('#gemiboost-input-title');
+    const setDefaultCheckbox = overlay.querySelector('#gemiboost-input-setdefault');
     const cancelBtn = overlay.querySelector('.gemiboost-modal-btn-cancel');
     const confirmBtn = overlay.querySelector('.gemiboost-modal-btn-confirm');
     const closeBtn = overlay.querySelector('.gemiboost-modal-close');
@@ -646,9 +655,10 @@ GemiBoost.UI = {
     const handleConfirm = () => {
       const chosenFolder = folderInput ? folderInput.value.trim() || 'Gemini' : 'Gemini';
       const chosenTitle = titleInput ? titleInput.value.trim() || title : title;
+      const setAsDefault = setDefaultCheckbox ? setDefaultCheckbox.checked : false;
       closeModal();
       if (onConfirm) {
-        onConfirm({ folder: chosenFolder, title: chosenTitle });
+        onConfirm({ folder: chosenFolder, title: chosenTitle, setAsDefault });
       }
     };
 

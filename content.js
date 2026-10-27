@@ -92,11 +92,31 @@ GemiBoost.App = {
           title,
           defaultFolder,
           historyFolders,
-          onConfirm: ({ folder, title: chosenTitle }) => {
-            if (GemiBoost.Storage.addObsidianFolderHistory) {
-              GemiBoost.Storage.addObsidianFolderHistory(folder);
+          onConfirm: ({ folder, title: chosenTitle, setAsDefault }) => {
+            if (setAsDefault) {
+              // Persist as new default folder and turn off prompt mode
+              const updatedSettings = {
+                ...settings,
+                obsidianFolder: folder,
+                obsidianPromptFolder: false
+              };
+              let history = Array.isArray(settings.obsidianFolderHistory) ? settings.obsidianFolderHistory.slice() : ['Gemini'];
+              history = [folder, ...history.filter((f) => f.toLowerCase() !== folder.toLowerCase())].slice(0, 5);
+              updatedSettings.obsidianFolderHistory = history;
+
+              if (GemiBoost.Storage.saveExportSettings) {
+                GemiBoost.Storage.saveExportSettings(updatedSettings, () => {
+                  GemiBoost.Exporter.exportToObsidian({ folder, title: chosenTitle });
+                });
+              } else {
+                GemiBoost.Exporter.exportToObsidian({ folder, title: chosenTitle });
+              }
+            } else {
+              if (GemiBoost.Storage.addObsidianFolderHistory) {
+                GemiBoost.Storage.addObsidianFolderHistory(folder);
+              }
+              GemiBoost.Exporter.exportToObsidian({ folder, title: chosenTitle });
             }
-            GemiBoost.Exporter.exportToObsidian({ folder, title: chosenTitle });
           }
         });
       } else {
