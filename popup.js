@@ -6,7 +6,8 @@ const STORAGE_KEY = CONFIG_SETTINGS?.STORAGE_KEY || 'gemiboost_export_settings';
 const DEFAULT_SETTINGS = CONFIG_SETTINGS?.DEFAULTS || {
   includeLink: false,
   includeAccount: false,
-  includeThinking: false
+  includeThinking: false,
+  includePromptNumber: true
 };
 
 // UI localization strings
@@ -19,6 +20,8 @@ const I18N_STRINGS = {
     accountDesc: '导出 Markdown 时附带当前账号信息',
     thinkingTitle: '包含思考过程',
     thinkingDesc: '导出 Task 模式或推理模型的思考链',
+    promptNumberTitle: '包含提问序号',
+    promptNumberDesc: '在导出的每个提问标题前添加轮次序号（如：## 1.）',
     obsidianSectionTitle: 'Obsidian 设置',
     obsidianPromptFolderTitle: '每次导出时选择文件夹',
     obsidianPromptFolderDesc: '点击导出时在页面中弹窗选择保存路径',
@@ -37,6 +40,8 @@ const I18N_STRINGS = {
     accountDesc: 'Add Google account email to Markdown header',
     thinkingTitle: 'Include thinking process',
     thinkingDesc: 'Export Task and reasoning thoughts',
+    promptNumberTitle: 'Include prompt numbers',
+    promptNumberDesc: 'Add sequence numbers (e.g. ## 1.) to prompt headings',
     obsidianSectionTitle: 'Obsidian Settings',
     obsidianPromptFolderTitle: 'Ask folder before export',
     obsidianPromptFolderDesc: 'Prompt to choose a destination folder on each export',
@@ -53,6 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const linkToggle = document.getElementById('includeLink');
   const accountToggle = document.getElementById('includeAccount');
   const thinkingToggle = document.getElementById('includeThinking');
+  const promptNumberToggle = document.getElementById('includePromptNumber');
   const versionChip = document.getElementById('versionChip');
   const sectionTitle = document.getElementById('sectionTitle');
   const linkTitle = document.getElementById('linkTitle');
@@ -61,6 +67,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const accountDesc = document.getElementById('accountDesc');
   const thinkingTitle = document.getElementById('thinkingTitle');
   const thinkingDesc = document.getElementById('thinkingDesc');
+  const promptNumberTitle = document.getElementById('promptNumberTitle');
+  const promptNumberDesc = document.getElementById('promptNumberDesc');
   const obsidianSectionTitle = document.getElementById('obsidianSectionTitle');
   const obsidianPromptFolder = document.getElementById('obsidianPromptFolder');
   const obsidianPromptFolderTitle = document.getElementById('obsidianPromptFolderTitle');
@@ -96,6 +104,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (accountDesc) accountDesc.textContent = strings.accountDesc;
   if (thinkingTitle) thinkingTitle.textContent = strings.thinkingTitle;
   if (thinkingDesc) thinkingDesc.textContent = strings.thinkingDesc;
+  if (promptNumberTitle) promptNumberTitle.textContent = strings.promptNumberTitle;
+  if (promptNumberDesc) promptNumberDesc.textContent = strings.promptNumberDesc;
   if (obsidianSectionTitle) obsidianSectionTitle.textContent = strings.obsidianSectionTitle;
   if (obsidianPromptFolderTitle) obsidianPromptFolderTitle.textContent = strings.obsidianPromptFolderTitle;
   if (obsidianPromptFolderDesc) obsidianPromptFolderDesc.textContent = strings.obsidianPromptFolderDesc;
@@ -135,6 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (linkToggle) linkToggle.checked = !!settings.includeLink;
     if (accountToggle) accountToggle.checked = !!settings.includeAccount;
     if (thinkingToggle) thinkingToggle.checked = !!settings.includeThinking;
+    if (promptNumberToggle) promptNumberToggle.checked = !!settings.includePromptNumber;
     const isPrompt = !!settings.obsidianPromptFolder;
     if (obsidianPromptFolder) obsidianPromptFolder.checked = isPrompt;
     if (obsidianFolder) obsidianFolder.value = settings.obsidianFolder || DEFAULT_SETTINGS.obsidianFolder || 'Gemini';
@@ -149,7 +160,7 @@ document.addEventListener('DOMContentLoaded', () => {
       : null;
 
   if (storage) {
-    storage.get([STORAGE_KEY, 'includeLink', 'includeAccount', 'includeThinking', 'obsidianFolder', 'obsidianVault', 'obsidianPromptFolder'], (res) => {
+    storage.get([STORAGE_KEY, 'includeLink', 'includeAccount', 'includeThinking', 'includePromptNumber', 'obsidianFolder', 'obsidianVault', 'obsidianPromptFolder'], (res) => {
       let settings = DEFAULT_SETTINGS;
       if (res && res[STORAGE_KEY] && typeof res[STORAGE_KEY] === 'object') {
         settings = { ...DEFAULT_SETTINGS, ...res[STORAGE_KEY] };
@@ -158,6 +169,7 @@ document.addEventListener('DOMContentLoaded', () => {
           includeLink: res.includeLink !== undefined ? !!res.includeLink : DEFAULT_SETTINGS.includeLink,
           includeAccount: res.includeAccount !== undefined ? !!res.includeAccount : DEFAULT_SETTINGS.includeAccount,
           includeThinking: res.includeThinking !== undefined ? !!res.includeThinking : DEFAULT_SETTINGS.includeThinking,
+          includePromptNumber: res.includePromptNumber !== undefined ? !!res.includePromptNumber : DEFAULT_SETTINGS.includePromptNumber,
           obsidianFolder: res.obsidianFolder !== undefined ? String(res.obsidianFolder) : DEFAULT_SETTINGS.obsidianFolder,
           obsidianVault: res.obsidianVault !== undefined ? String(res.obsidianVault) : DEFAULT_SETTINGS.obsidianVault,
           obsidianPromptFolder: res.obsidianPromptFolder !== undefined ? !!res.obsidianPromptFolder : DEFAULT_SETTINGS.obsidianPromptFolder
@@ -196,6 +208,7 @@ document.addEventListener('DOMContentLoaded', () => {
       includeLink: linkToggle ? linkToggle.checked : false,
       includeAccount: accountToggle ? accountToggle.checked : false,
       includeThinking: thinkingToggle ? thinkingToggle.checked : false,
+      includePromptNumber: promptNumberToggle ? promptNumberToggle.checked : false,
       obsidianPromptFolder: obsidianPromptFolder ? obsidianPromptFolder.checked : false,
       obsidianFolder: obsidianFolder ? obsidianFolder.value.trim() || 'Gemini' : 'Gemini',
       obsidianVault: obsidianVault ? obsidianVault.value.trim() : ''
@@ -222,6 +235,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (linkToggle) linkToggle.addEventListener('change', saveSettings);
   if (accountToggle) accountToggle.addEventListener('change', saveSettings);
   if (thinkingToggle) thinkingToggle.addEventListener('change', saveSettings);
+  if (promptNumberToggle) promptNumberToggle.addEventListener('change', saveSettings);
   if (obsidianPromptFolder) {
     obsidianPromptFolder.addEventListener('change', () => {
       updateFolderRowDisabledState(obsidianPromptFolder.checked);

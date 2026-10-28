@@ -92,6 +92,7 @@ GemiBoost.Config = {
       includeLink: false,
       includeAccount: false,
       includeThinking: false,
+      includePromptNumber: true,
       obsidianFolder: 'Gemini',
       obsidianVault: '',
       obsidianSilent: true,
