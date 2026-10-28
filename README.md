@@ -15,6 +15,7 @@
 - **Smooth Navigation**: Click any item in the TOC to instantly scroll to that part of the chat.
 - **Export to Markdown**: Export entire chat conversations into clean, formatted Markdown (`.md`) files with a single click, preserving code blocks, syntax highlighting, LaTeX math formulas, tables, and thinking processes.
 - **One-Click Export to Obsidian**: Export conversations straight into your local Obsidian vault without any third-party plugins, using the official Obsidian protocol and clipboard transit without URL length limits.
+- **Smart Background Desktop Notifications**: Sends a native desktop notification when Gemini finishes generating a response. Uses smart "do-not-disturb" detection so notifications only trigger when you are away from the tab, and clicking the notification jumps directly back to the conversation.
 
 ## Installation
 

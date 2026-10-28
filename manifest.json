@@ -4,8 +4,12 @@
   "version": "1.1.15",
   "description": "A powerful table of contents and chat navigator for Google Gemini Web.",
   "permissions": [
-    "storage"
+    "storage",
+    "notifications"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_popup": "popup.html",
     "default_title": "GemiBoost Settings",
@@ -35,6 +39,7 @@
         "content-sync.js",
         "content-exporter.js",
         "content-ui.js",
+        "content-notification.js",
         "content.js"
       ],
       "run_at": "document_end"

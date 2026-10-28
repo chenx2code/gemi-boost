@@ -65,7 +65,18 @@ GemiBoost.Config = {
       'header',
       '[role="banner"]'
     ],
-    CHAT_SCROLLER_EXCLUDE: 'infinite-scroller, user-query, model-response, [class*="mini-app"], .chat-history'
+    CHAT_SCROLLER_EXCLUDE: 'infinite-scroller, user-query, model-response, [class*="mini-app"], .chat-history',
+    STOP_BUTTON: [
+      'button[aria-label*="Stop" i]',
+      'button[aria-label*="停止" i]',
+      'button[aria-label*="応答を停止" i]',
+      'button[data-testid*="stop" i]',
+      'button[data-test-id*="stop" i]',
+      'button.stop-button',
+      'button.stop-generating-button',
+      'mat-icon[data-mat-icon-name*="stop" i]',
+      'mat-icon[fonticon*="stop" i]'
+    ].join(', ')
   },
 
   // Timing constants (milliseconds)
@@ -93,6 +104,7 @@ GemiBoost.Config = {
       includeAccount: false,
       includeThinking: false,
       includePromptNumber: true,
+      enableNotifications: true,
       obsidianFolder: 'Gemini',
       obsidianVault: '',
       obsidianSilent: true,

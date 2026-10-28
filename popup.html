@@ -123,8 +123,38 @@
         </label>
       </div>
 
-      <!-- Section 2: Obsidian Settings -->
-      <div class="section-header" style="margin-top: 14px;">
+      <!-- Section 2: Notifications -->
+      <div class="section-header section-header-secondary">
+        <span class="section-title" id="notificationSectionTitle">Notifications</span>
+      </div>
+
+      <div class="settings-card">
+        <!-- Option: Desktop notifications -->
+        <label class="setting-row" for="enableNotifications">
+          <div class="setting-leading-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+              <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z"/>
+            </svg>
+          </div>
+          <div class="setting-info">
+            <span class="setting-title" id="notificationsTitle">Desktop notifications</span>
+            <span class="setting-desc" id="notificationsDesc">Notify when generation is complete (background only)</span>
+          </div>
+          <div class="switch-container">
+            <input type="checkbox" id="enableNotifications" class="m3-switch-input">
+            <div class="m3-switch-track">
+              <div class="m3-switch-thumb">
+                <svg class="m3-switch-check" viewBox="0 0 24 24" width="11" height="11">
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </label>
+      </div>
+
+      <!-- Section 3: Obsidian Settings -->
+      <div class="section-header section-header-secondary">
         <span class="section-title" id="obsidianSectionTitle">Obsidian Settings</span>
       </div>
 
