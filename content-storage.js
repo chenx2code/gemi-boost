@@ -261,7 +261,7 @@ GemiBoost.Storage = {
     if (this.isContextValid()) {
       try {
         const storage = chrome.storage.local || chrome.storage.sync;
-        storage.get([key, 'includeLink', 'includeAccount', 'includeThinking', 'obsidianFolder', 'obsidianVault', 'obsidianSilent', 'obsidianPromptFolder', 'obsidianFolderHistory'], (res) => {
+        storage.get([key, 'includeLink', 'includeAccount', 'includeThinking', 'includePromptNumber', 'obsidianFolder', 'obsidianVault', 'obsidianSilent', 'obsidianPromptFolder', 'obsidianFolderHistory'], (res) => {
           if (!res) return callback(defaults);
           if (res[key] && typeof res[key] === 'object') {
             return callback({ ...defaults, ...res[key] });
@@ -270,6 +270,7 @@ GemiBoost.Storage = {
             includeLink: res.includeLink !== undefined ? !!res.includeLink : defaults.includeLink,
             includeAccount: res.includeAccount !== undefined ? !!res.includeAccount : defaults.includeAccount,
             includeThinking: res.includeThinking !== undefined ? !!res.includeThinking : defaults.includeThinking,
+            includePromptNumber: res.includePromptNumber !== undefined ? !!res.includePromptNumber : defaults.includePromptNumber,
             obsidianFolder: res.obsidianFolder !== undefined ? String(res.obsidianFolder) : defaults.obsidianFolder,
             obsidianVault: res.obsidianVault !== undefined ? String(res.obsidianVault) : defaults.obsidianVault,
             obsidianSilent: res.obsidianSilent !== undefined ? !!res.obsidianSilent : defaults.obsidianSilent,
@@ -303,6 +304,7 @@ GemiBoost.Storage = {
       includeLink: !!settings.includeLink,
       includeAccount: !!settings.includeAccount,
       includeThinking: !!settings.includeThinking,
+      includePromptNumber: settings.includePromptNumber !== undefined ? !!settings.includePromptNumber : true,
       obsidianFolder: settings.obsidianFolder !== undefined ? String(settings.obsidianFolder) : 'Gemini',
       obsidianVault: settings.obsidianVault !== undefined ? String(settings.obsidianVault) : '',
       obsidianSilent: settings.obsidianSilent !== undefined ? !!settings.obsidianSilent : true,

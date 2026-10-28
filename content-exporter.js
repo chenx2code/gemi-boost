@@ -152,7 +152,8 @@ GemiBoost.Exporter = {
         resolve({
           includeLink: false,
           includeAccount: false,
-          includeThinking: false
+          includeThinking: false,
+          includePromptNumber: true
         });
       }
     });
@@ -189,11 +190,18 @@ GemiBoost.Exporter = {
   },
 
   // Format user turn according to heading hierarchy and truncation rules
-  formatUserTurn: function (turnIndex, userTurnData, isChinese) {
+  formatUserTurn: function (turnIndex, userTurnData, isChinese, options = {}) {
     const text = userTurnData && userTurnData.text ? userTurnData.text.trim() : '';
     const attachments = (userTurnData && userTurnData.attachments) || [];
 
-    const promptLabel = isChinese ? '用户提问' : 'User Prompt';
+    const shouldIncludeNumber = options.includePromptNumber !== undefined
+      ? !!options.includePromptNumber
+      : (GemiBoost.Config?.SETTINGS?.DEFAULTS?.includePromptNumber ?? true);
+    const includeNumber = shouldIncludeNumber && !!turnIndex;
+
+    const promptLabel = isChinese
+      ? (includeNumber ? `用户提问 #${turnIndex}` : '用户提问')
+      : (includeNumber ? `User Prompt #${turnIndex}` : 'User Prompt');
     let heading = '';
     let quoteBlock = '';
     const attachmentQuotes = [];
@@ -245,7 +253,8 @@ GemiBoost.Exporter = {
       }
     }
 
-    const finalHeading = `## ${heading}`;
+    const prefix = includeNumber ? `${turnIndex}. ` : '';
+    const finalHeading = `## ${prefix}${heading}`;
 
     const parts = [finalHeading];
     if (attachmentQuotes.length > 0) {
@@ -297,7 +306,7 @@ GemiBoost.Exporter = {
     // 3. Conversation Turns
     turns.forEach((turn) => {
       // User turn (H2)
-      const userMarkdown = this.formatUserTurn(turn.turnIndex, turn.user, isChinese);
+      const userMarkdown = this.formatUserTurn(turn.turnIndex, turn.user, isChinese, settings);
       parts.push(userMarkdown);
 
       // AI response (demoted to H3+)
