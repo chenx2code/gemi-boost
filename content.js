@@ -14,6 +14,9 @@ GemiBoost.App = {
   // Initialize extension on page load
   init: function () {
     console.log('GemiBoost: Initializing content script...');
+    if (GemiBoost.Notification) {
+      GemiBoost.Notification.init();
+    }
     this.tryInjectUI();
   },
 
@@ -232,10 +235,21 @@ GemiBoost.App = {
       this.mountButton();
     }, GemiBoost.Config.TIMING.DEBOUNCE_DOM_OBSERVER_MS);
 
+    const debouncedCheckNotification = GemiBoost.Utils.debounce(() => {
+      if (GemiBoost.Notification) {
+        GemiBoost.Notification.checkGenerationState();
+      }
+    }, 150);
+
     const observer = new MutationObserver((mutations) => {
       // 1. Detect SPA route navigation
       if (this.currentUrl !== location.href) {
         this.currentUrl = location.href;
+
+        // Reset notification state so navigation doesn't trigger false alerts
+        if (GemiBoost.Notification) {
+          GemiBoost.Notification.resetState();
+        }
 
         // Immediately abort any background sync from previous chat to prevent cache contamination
         GemiBoost.Sync.abortSync();
@@ -292,20 +306,33 @@ GemiBoost.App = {
         }
       }
 
-      // 3. Trigger debounced update if nodes were added or removed
+      // 3. Trigger debounced update if nodes were added or removed, and check generation state
       let shouldUpdate = false;
+      let shouldCheckNotification = false;
       for (const mutation of mutations) {
         if (mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0) {
           shouldUpdate = true;
+          shouldCheckNotification = true;
           break;
+        }
+        if (mutation.type === 'attributes') {
+          shouldCheckNotification = true;
         }
       }
       if (shouldUpdate) {
         debouncedUpdate();
       }
+      if (shouldCheckNotification) {
+        debouncedCheckNotification();
+      }
     });
 
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['aria-label', 'data-testid', 'data-test-id']
+    });
   }
 };
 
