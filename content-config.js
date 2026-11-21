@@ -26,6 +26,14 @@ GemiBoost.Config = {
     QUERY_TEXT: '.query-text, p.query-text-line, .query-content',
     HIDDEN_LABEL: '.cdk-visually-hidden, [class*="visually-hidden"]',
     FILE_CONTAINER: '.file-preview-container, [class*="file-preview"]',
+    QUOTE_CONTAINER: [
+      '.quote-preview-container',
+      '[class*="quote-preview"]',
+      '.citation-preview',
+      '[class*="citation-preview"]',
+      '[data-test-id*="quote"]',
+      '[data-test-id*="citation"]'
+    ].join(', '),
     MODEL_RESPONSE: 'model-response',
     MESSAGE_CONTENT: 'message-content, .model-response-text, .markdown',
     THINKING_CONTAINER: [

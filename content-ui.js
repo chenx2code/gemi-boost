@@ -32,7 +32,8 @@ const I18N_UI = {
     closeTitle: '关闭目录',
     toggleTitle: '展开/收起目录',
     imageLabel: '图片',
-    fileLabel: '文件'
+    fileLabel: '文件',
+    quoteLabel: '引用'
   },
   en: {
     title: 'Table of Contents',
@@ -61,7 +62,8 @@ const I18N_UI = {
     closeTitle: 'Close Table of Contents',
     toggleTitle: 'Toggle Table of Contents',
     imageLabel: 'Image',
-    fileLabel: 'File'
+    fileLabel: 'File',
+    quoteLabel: 'Quote'
   }
 };
 
@@ -796,7 +798,7 @@ GemiBoost.UI = {
 
         const fileIcon = document.createElement('span');
         fileIcon.className = `gemiboost-inline-icon gemiboost-icon-${category}`;
-        fileIcon.title = item.fileType || strings.fileLabel;
+        fileIcon.title = (category === 'quote' ? strings.quoteLabel : item.fileType) || strings.fileLabel;
         fileIcon.innerHTML = this.getAttachmentIconSvg(category);
         textSpan.appendChild(fileIcon);
       }
@@ -882,6 +884,8 @@ GemiBoost.UI = {
         return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-10 12.5v-9l6 4.5-6 4.5z"/></svg>';
       case 'archive':
         return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 10h-2v-2h2v2zm0-4h-2v-2h2v2zm-2-4V6h2v2h-2z"/></svg>';
+      case 'quote':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 15l-6 6-1.42-1.42L15.17 16H4V4h2v10h9.17l-3.59-3.58L13 9l6 6z"/></svg>';
       case 'image':
         return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>';
       case 'file':
@@ -1109,7 +1113,10 @@ GemiBoost.UI = {
     }
 
     if (item.type === 'file') {
-      const rawFiles = Array.from(targetQuery.querySelectorAll(GemiBoost.Config.SELECTORS.FILE_CONTAINER));
+      const fileSelector = GemiBoost.Config.SELECTORS.QUOTE_CONTAINER
+        ? `${GemiBoost.Config.SELECTORS.FILE_CONTAINER}, ${GemiBoost.Config.SELECTORS.QUOTE_CONTAINER}`
+        : GemiBoost.Config.SELECTORS.FILE_CONTAINER;
+      const rawFiles = Array.from(targetQuery.querySelectorAll(fileSelector));
       const files = rawFiles.filter((el) => !rawFiles.some((other) => other !== el && other.contains(el)));
       return files[item.subIndex || 0] || targetQuery;
     }
