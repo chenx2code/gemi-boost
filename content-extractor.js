@@ -543,8 +543,8 @@ GemiBoost.Extractor = {
       // Check if container represents a quoted text selection (Ask Gemini)
       if (this.isQuoteElement(fileEl, fileText)) {
         const cleanQuote = this.extractCleanQuoteText(fileEl) || fileText.replace(/^[↳↵⤷"“\s]+/, '').replace(/\s+/g, ' ').trim();
-        const quotePreview = cleanQuote.length > 100 ? cleanQuote.substring(0, 100) + '...' : cleanQuote;
-        const attTag = `[Quote] ${quotePreview}`;
+        // Quote represents conversation context, keep full text without 100-char truncation
+        const attTag = `[Quote] ${cleanQuote}`;
         if (!seenAttachments.has(attTag)) {
           seenAttachments.add(attTag);
           attachments.push(attTag);
