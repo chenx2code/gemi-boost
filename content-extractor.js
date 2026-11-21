@@ -37,8 +37,11 @@ GemiBoost.Extractor = {
         return true;
       });
 
-      // 3. Extract independent files
-      const rawFiles = Array.from(promptEl.querySelectorAll(GemiBoost.Config.SELECTORS.FILE_CONTAINER));
+      // 3. Extract independent files and quotes
+      const fileSelector = GemiBoost.Config.SELECTORS.QUOTE_CONTAINER
+        ? `${GemiBoost.Config.SELECTORS.FILE_CONTAINER}, ${GemiBoost.Config.SELECTORS.QUOTE_CONTAINER}`
+        : GemiBoost.Config.SELECTORS.FILE_CONTAINER;
+      const rawFiles = Array.from(promptEl.querySelectorAll(fileSelector));
       // Keep only top-level file containers to prevent nested child elements from duplicating entries
       const topLevelFiles = rawFiles.filter(
         (el) => !rawFiles.some((other) => other !== el && other.contains(el))
@@ -52,6 +55,24 @@ GemiBoost.Extractor = {
 
         if (text.includes(fileText)) {
           text = text.replace(fileText, '').trim();
+        }
+
+        // Check if container represents a quoted text selection (Ask Gemini)
+        const isQuote = this.isQuoteElement(file, fileText);
+        if (isQuote) {
+          const cleanQuote = this.extractCleanQuoteText(file) || fileText.replace(/^[↳↵⤷"“\s]+/, '').replace(/\s+/g, ' ').trim();
+          if (cleanQuote && text.includes(cleanQuote)) {
+            text = text.replace(cleanQuote, '').trim();
+          }
+          text = text.replace(/^[↳↵⤷"“\s]+/, '').trim();
+          fileInfoList.push({
+            fileName: cleanQuote,
+            fileType: 'Quote',
+            fileCategory: 'quote',
+            subIndex: fileIndex,
+            isQuote: true
+          });
+          return;
         }
 
         const lines = fileText.split('\n').map((l) => l.trim()).filter((l) => l);
@@ -323,8 +344,12 @@ GemiBoost.Extractor = {
     };
   },
 
-  // Classify file type into one of 9 granular categories (or fallback 'file')
-  detectFileCategory: function (fileType, fileName, isFolder) {
+  // Classify file type into one of 10 granular categories (or fallback 'file')
+  detectFileCategory: function (fileType, fileName, isFolder, isQuote) {
+    if (isQuote || (fileType && fileType.toLowerCase() === 'quote')) {
+      return 'quote';
+    }
+
     if (isFolder || (fileType && fileType.toLowerCase() === 'folder')) {
       return 'folder';
     }
@@ -379,6 +404,86 @@ GemiBoost.Extractor = {
     return 'file';
   },
 
+  // Detect whether a container represents a quoted text selection (Ask Gemini)
+  isQuoteElement: function (fileEl, fileText) {
+    if (!fileEl) return false;
+    const text = fileText || fileEl.textContent || '';
+    const cleanText = text.trim();
+
+    // 1. Selector match
+    if (GemiBoost.Config?.SELECTORS?.QUOTE_CONTAINER && fileEl.matches?.(GemiBoost.Config.SELECTORS.QUOTE_CONTAINER)) {
+      return true;
+    }
+    if (fileEl.closest?.('[class*="quote-preview"], [class*="citation-preview"], [data-test-id*="quote"]')) {
+      return true;
+    }
+
+    // 2. Icon check: Material icon for reply/quote/subdirectory_arrow_right
+    const matIcon = fileEl.querySelector?.('mat-icon, .material-icons, .material-symbols-outlined, [class*="mat-icon"]');
+    if (matIcon) {
+      const iconName = (matIcon.textContent || '').trim().toLowerCase();
+      if (
+        iconName.includes('subdirectory_arrow_right') ||
+        iconName.includes('reply') ||
+        iconName.includes('format_quote') ||
+        iconName.includes('quote') ||
+        iconName.includes('turn_right')
+      ) {
+        return true;
+      }
+    }
+
+    // 3. Leading quote arrow symbol check (↳ \u21B3, ↵ \u21B5, ⤷ \u2937)
+    if (/^[↳↵⤷]/.test(cleanText) || cleanText.includes('↳')) {
+      return true;
+    }
+
+    // 4. Attribute / aria-label check on container or internal button
+    const aria = ((fileEl.getAttribute && fileEl.getAttribute('aria-label')) || '').toLowerCase();
+    const btn = fileEl.querySelector?.('button[aria-label]');
+    const btnAria = btn ? ((btn.getAttribute && btn.getAttribute('aria-label')) || '').toLowerCase() : '';
+    if (
+      aria.includes('quote') || aria.includes('citation') || aria.includes('selected') || aria.includes('引用') ||
+      btnAria.includes('quote') || btnAria.includes('citation') || btnAria.includes('引用')
+    ) {
+      return true;
+    }
+
+    // 5. Heuristic check:
+    // If it has NO file extension, is not a folder, has no image/video/audio,
+    // and is a long sentence/prose without typical file metadata
+    const hasExtension = /\.[a-zA-Z0-9]{2,5}($|\s)/.test(cleanText.toLowerCase());
+    const isFolder = fileEl.querySelector?.('[class*="folder"], mat-icon') !== null &&
+      cleanText.toLowerCase().includes('folder');
+    const isMedia = fileEl.querySelector?.('video, audio, img') !== null;
+    if (!hasExtension && !isFolder && !isMedia && cleanText.length > 20) {
+      if (/[，。！？；：,\.!\?;:]/.test(cleanText)) {
+        return true;
+      }
+    }
+
+    return false;
+  },
+
+  // Extract and clean raw text from a quote container, stripping UI noise elements
+  extractCleanQuoteText: function (fileEl) {
+    if (!fileEl) return '';
+    try {
+      const clone = fileEl.cloneNode(true);
+      // Remove noise elements: action buttons, visually-hidden screen reader labels, icons, SVGs
+      clone.querySelectorAll(
+        'button, .cdk-visually-hidden, [class*="visually-hidden"], mat-icon, .material-icons, .material-symbols-outlined, [class*="mat-icon"], svg'
+      ).forEach((el) => el.remove());
+      let raw = clone.textContent || '';
+      // Strip leading arrow characters, quotation marks, and normalize whitespace
+      raw = raw.replace(/^[↳↵⤷"“\s]+/, '').replace(/\s+/g, ' ').trim();
+      return raw;
+    } catch (e) {
+      const text = fileEl.textContent || '';
+      return text.replace(/^[↳↵⤷"“\s]+/, '').replace(/\s+/g, ' ').trim();
+    }
+  },
+
   // Extract structured user turn (text content and attached multimodal files)
   extractUserTurn: function (promptEl) {
     // A. Text content
@@ -409,9 +514,12 @@ GemiBoost.Extractor = {
     });
 
     // C. Attached files & documents (strictly match genuine file preview containers)
+    const quoteSelector = GemiBoost.Config?.SELECTORS?.QUOTE_CONTAINER
+      ? `, ${GemiBoost.Config.SELECTORS.QUOTE_CONTAINER}`
+      : '';
     const rawFileElements = Array.from(
       promptEl.querySelectorAll(
-        `${GemiBoost.Config.SELECTORS.FILE_CONTAINER}, [data-test-id*="file-preview"], [data-test-id*="attachment"]`
+        `${GemiBoost.Config.SELECTORS.FILE_CONTAINER}${quoteSelector}, [data-test-id*="file-preview"], [data-test-id*="attachment"]`
       )
     );
 
@@ -431,6 +539,25 @@ GemiBoost.Extractor = {
 
       if (fileText && seenFileTexts.has(fileText)) return;
       if (fileText) seenFileTexts.add(fileText);
+
+      // Check if container represents a quoted text selection (Ask Gemini)
+      if (this.isQuoteElement(fileEl, fileText)) {
+        const cleanQuote = this.extractCleanQuoteText(fileEl) || fileText.replace(/^[↳↵⤷"“\s]+/, '').replace(/\s+/g, ' ').trim();
+        // Quote represents conversation context, keep full text without 100-char truncation
+        const attTag = `[Quote] ${cleanQuote}`;
+        if (!seenAttachments.has(attTag)) {
+          seenAttachments.add(attTag);
+          attachments.push(attTag);
+        }
+        if (fileText && text.includes(fileText)) {
+          text = text.replace(fileText, '').trim();
+        }
+        if (cleanQuote && text.includes(cleanQuote)) {
+          text = text.replace(cleanQuote, '').trim();
+        }
+        text = text.replace(/^[↳↵⤷"“\s]+/, '').trim();
+        return;
+      }
 
       const lower = fileText.toLowerCase();
       const elHtml = fileEl.outerHTML.toLowerCase();
