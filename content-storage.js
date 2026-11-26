@@ -485,7 +485,7 @@ GemiBoost.Storage = {
       obsidianFolder: settings.obsidianFolder !== undefined ? String(settings.obsidianFolder) : 'Gemini',
       obsidianVault: settings.obsidianVault !== undefined ? String(settings.obsidianVault) : '',
       obsidianSilent: settings.obsidianSilent !== undefined ? !!settings.obsidianSilent : true,
-      obsidianPromptFolder: settings.obsidianPromptFolder !== undefined ? !!settings.obsidianPromptFolder : false,
+      obsidianPromptFolder: settings.obsidianPromptFolder !== undefined ? !!settings.obsidianPromptFolder : true,
       obsidianFolderHistory: Array.isArray(settings.obsidianFolderHistory) ? settings.obsidianFolderHistory : ['Gemini']
     };
 

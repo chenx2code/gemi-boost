@@ -8,7 +8,10 @@ const DEFAULT_SETTINGS = CONFIG_SETTINGS?.DEFAULTS || {
   includeAccount: false,
   includeThinking: false,
   includePromptNumber: true,
-  enableNotifications: true
+  enableNotifications: true,
+  obsidianFolder: 'Gemini',
+  obsidianVault: '',
+  obsidianPromptFolder: true
 };
 
 // UI localization strings
@@ -226,7 +229,7 @@ document.addEventListener('DOMContentLoaded', () => {
       includeThinking: thinkingToggle ? thinkingToggle.checked : false,
       includePromptNumber: promptNumberToggle ? promptNumberToggle.checked : false,
       enableNotifications: notificationsToggle ? notificationsToggle.checked : true,
-      obsidianPromptFolder: obsidianPromptFolder ? obsidianPromptFolder.checked : false,
+      obsidianPromptFolder: obsidianPromptFolder ? obsidianPromptFolder.checked : true,
       obsidianFolder: obsidianFolder ? obsidianFolder.value.trim() || 'Gemini' : 'Gemini',
       obsidianVault: obsidianVault ? obsidianVault.value.trim() : ''
     };
