@@ -133,7 +133,7 @@ GemiBoost.Config = {
       obsidianFolder: 'Gemini',
       obsidianVault: '',
       obsidianSilent: true,
-      obsidianPromptFolder: false,
+      obsidianPromptFolder: true,
       obsidianFolderHistory: ['Gemini']
     }
   }
