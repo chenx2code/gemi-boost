@@ -548,23 +548,17 @@ GemiBoost.UI = {
     overlay.id = 'gemiboost-obsidian-modal';
     overlay.className = 'gemiboost-modal-overlay';
 
-    // Build history chips HTML
+    // Build history chips placeholder (populated via safe DOM APIs below)
     const foldersToDisplay = Array.from(new Set([defaultFolder, ...(Array.isArray(historyFolders) ? historyFolders : [])]))
       .filter(Boolean)
       .slice(0, 5);
 
     let chipsHtml = '';
     if (foldersToDisplay.length > 0) {
-      const chipButtons = foldersToDisplay
-        .map(
-          (f) =>
-            `<button type="button" class="gemiboost-modal-chip" data-folder="${f}">📁 ${f}</button>`
-        )
-        .join('');
       chipsHtml = `
         <div class="gemiboost-modal-chips-row">
           <span class="gemiboost-modal-chips-label">${strings.obsidianModalRecentLabel}</span>
-          <div class="gemiboost-modal-chips-list">${chipButtons}</div>
+          <div class="gemiboost-modal-chips-list"></div>
         </div>
       `;
     }
@@ -597,7 +591,7 @@ GemiBoost.UI = {
               <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
                 <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
               </svg>
-              <input type="text" id="gemiboost-input-title" class="gemiboost-modal-input" value="${title || ''}" spellcheck="false" autocomplete="off">
+              <input type="text" id="gemiboost-input-title" class="gemiboost-modal-input" spellcheck="false" autocomplete="off">
             </div>
           </div>
 
@@ -608,7 +602,7 @@ GemiBoost.UI = {
               <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
                 <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
               </svg>
-              <input type="text" id="gemiboost-input-folder" class="gemiboost-modal-input" placeholder="${strings.obsidianModalFolderPlaceholder}" value="${defaultFolder || 'Gemini'}" spellcheck="false" autocomplete="off">
+              <input type="text" id="gemiboost-input-folder" class="gemiboost-modal-input" placeholder="${strings.obsidianModalFolderPlaceholder}" spellcheck="false" autocomplete="off">
             </div>
           </div>
 
@@ -633,22 +627,33 @@ GemiBoost.UI = {
 
     const folderInput = overlay.querySelector('#gemiboost-input-folder');
     const titleInput = overlay.querySelector('#gemiboost-input-title');
+    if (titleInput) titleInput.value = title || '';
+    if (folderInput) folderInput.value = defaultFolder || 'Gemini';
+
     const setDefaultCheckbox = overlay.querySelector('#gemiboost-input-setdefault');
     const cancelBtn = overlay.querySelector('.gemiboost-modal-btn-cancel');
     const confirmBtn = overlay.querySelector('.gemiboost-modal-btn-confirm');
     const closeBtn = overlay.querySelector('.gemiboost-modal-close');
 
-    // Click history chips to quickly fill folder
-    const chips = overlay.querySelectorAll('.gemiboost-modal-chip');
-    chips.forEach((ch) => {
-      ch.addEventListener('click', () => {
-        const target = ch.getAttribute('data-folder');
-        if (target && folderInput) {
-          folderInput.value = target;
-          folderInput.focus();
-        }
+    // Populate and bind history chips safely via DOM properties
+    const chipsListEl = overlay.querySelector('.gemiboost-modal-chips-list');
+    if (chipsListEl && foldersToDisplay.length > 0) {
+      foldersToDisplay.forEach((f) => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'gemiboost-modal-chip';
+        chip.dataset.folder = f;
+        chip.textContent = `📁 ${f}`;
+        chip.addEventListener('click', () => {
+          const target = chip.dataset.folder;
+          if (target && folderInput) {
+            folderInput.value = target;
+            folderInput.focus();
+          }
+        });
+        chipsListEl.appendChild(chip);
       });
-    });
+    }
 
     const closeModal = () => {
       document.removeEventListener('keydown', handleKeyDown);
