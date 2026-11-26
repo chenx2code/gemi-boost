@@ -150,12 +150,16 @@ body[data-theme="dark"],
 #gemiboost-toc-container {
   position: relative;
   width: 0;
-  height: 100vh;
+  height: calc(100% + var(--gb-toc-top-offset, 0px));
+  max-height: 100dvh;
+  margin-top: calc(-1 * var(--gb-toc-top-offset, 0px));
+  align-self: stretch;
   flex-shrink: 0;
+  box-sizing: border-box;
   background-color: var(--gb-container-bg);
   overflow: hidden;
   transition: width 0.3s cubic-bezier(0.2, 0, 0, 1), border-left 0.3s cubic-bezier(0.2, 0, 0, 1);
-  z-index: 10;
+  z-index: 50;
   border-left: 0px solid transparent;
 }
 
@@ -166,8 +170,9 @@ body[data-theme="dark"],
 
 /* Inner wrapper */
 #gemiboost-toc-inner {
-  width: 288px;
+  width: min(287px, calc(100dvw - 25px));
   height: 100%;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   color: var(--gb-text-primary);
@@ -178,14 +183,14 @@ body[data-theme="dark"],
 
 /* Header */
 .gemiboost-toc-header {
-  padding: 12px 14px 12px 16px;
+  padding: 12px 10px 12px 12px;
   border-bottom: 1px solid var(--gb-border);
   background-color: var(--gb-header-bg);
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-shrink: 0;
-  gap: 8px;
+  gap: 4px;
   min-height: 52px;
   box-sizing: border-box;
 }
@@ -193,13 +198,14 @@ body[data-theme="dark"],
 .gemiboost-toc-title-group {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
+  flex: 1 1 auto;
 }
 
 .gemiboost-toc-title {
   font-weight: 500;
-  font-size: 15px;
+  font-size: 14px;
   color: var(--gb-text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -210,7 +216,7 @@ body[data-theme="dark"],
 .gemiboost-toc-badge {
   font-size: 11px;
   font-weight: 600;
-  padding: 2px 7px;
+  padding: 2px 6px;
   border-radius: 10px;
   background-color: var(--gb-badge-bg);
   color: var(--gb-badge-text);
@@ -227,7 +233,7 @@ body[data-theme="dark"],
 .gemiboost-toc-header-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 0;
   flex-shrink: 0;
 }
 
@@ -240,8 +246,8 @@ body[data-theme="dark"],
   cursor: pointer;
   color: var(--gb-btn-color);
   border-radius: 50%;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -361,7 +367,9 @@ body[data-theme="dark"],
   padding: 8px 6px;
   margin: 0;
   overflow-y: auto;
+  min-height: 0;
   flex-grow: 1;
+  overscroll-behavior: contain;
 }
 
 /* Custom Scrollbar */
@@ -622,6 +630,7 @@ body top-bar-actions {
   transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1) !important;
 }
 
+/* Shift top-bar-actions left in push mode so it stays clear of the full-height TOC drawer */
 body.gemiboost-toc-open top-bar-actions {
   transform: translateX(-288px) !important;
 }
@@ -629,6 +638,43 @@ body.gemiboost-toc-open top-bar-actions {
 /* Hide toggle button when TOC is open */
 body.gemiboost-toc-open #gemiboost-toc-toggle {
   display: none !important;
+}
+
+/* Overlay mode on narrow viewports so the chat column is not crushed */
+@media (max-width: 640px) {
+  #gemiboost-toc-container {
+    position: fixed;
+    inset-block: 0;
+    inset-inline-end: 0;
+    height: 100dvh;
+    max-height: 100dvh;
+    margin-top: 0;
+    z-index: 200;
+    transition: width 0.3s cubic-bezier(0.2, 0, 0, 1), border-left 0.3s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.3s cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  #gemiboost-toc-container.panel-visible {
+    width: min(288px, calc(100dvw - 24px));
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.14);
+  }
+
+  body.dark-theme #gemiboost-toc-container.panel-visible,
+  html.dark-theme #gemiboost-toc-container.panel-visible,
+  html[data-theme="dark"] #gemiboost-toc-container.panel-visible,
+  body[data-theme="dark"] #gemiboost-toc-container.panel-visible,
+  [data-theme="dark"] #gemiboost-toc-container.panel-visible {
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.38);
+  }
+
+  body.gemiboost-toc-open top-bar-actions {
+    transform: none !important;
+  }
+}
+
+@media (max-width: 640px) and (prefers-color-scheme: dark) {
+  #gemiboost-toc-container.panel-visible {
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.38);
+  }
 }
 
 /* ==========================================================================
