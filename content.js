@@ -17,6 +17,14 @@ GemiBoost.App = {
     if (GemiBoost.Notification) {
       GemiBoost.Notification.init();
     }
+    if (GemiBoost.Extractor && GemiBoost.Extractor.setOnImageFilenamesUpdated) {
+      const debouncedMetadataUpdate = GemiBoost.Utils.debounce(() => {
+        this.updateCatalog();
+      }, 80);
+      GemiBoost.Extractor.setOnImageFilenamesUpdated(() => {
+        debouncedMetadataUpdate();
+      });
+    }
     this.tryInjectUI();
   },
 

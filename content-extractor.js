@@ -4,9 +4,246 @@
 window.GemiBoost = window.GemiBoost || {};
 
 GemiBoost.Extractor = {
+  imageFilenameMap: new Map(),
+  _onImageFilenamesUpdated: null,
+  _interceptorBridgeBound: false,
+
+  // Normalize image URL by stripping query params, hash fragments, and FIFE trailing options
+  normalizeImageUrl: function (url) {
+    if (!url || typeof url !== 'string') return '';
+    if (url.startsWith('blob:') || url.startsWith('data:')) return url;
+    return url.split('#')[0].split('?')[0].replace(/=[^/]+$/, '');
+  },
+
+  // Register intercepted URL -> filename mappings and return true if anything changed
+  registerImageFilenames: function (entries) {
+    if (!Array.isArray(entries) || entries.length === 0) return false;
+    let hasUpdates = false;
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      if (!entry || typeof entry.url !== 'string' || typeof entry.fileName !== 'string') continue;
+      const cleanName = entry.fileName.trim();
+      if (!cleanName) continue;
+
+      if (this.imageFilenameMap.get(entry.url) !== cleanName) {
+        this.imageFilenameMap.set(entry.url, cleanName);
+        hasUpdates = true;
+      }
+      const normalized = this.normalizeImageUrl(entry.url);
+      if (normalized && this.imageFilenameMap.get(normalized) !== cleanName) {
+        this.imageFilenameMap.set(normalized, cleanName);
+        hasUpdates = true;
+      }
+    }
+    return hasUpdates;
+  },
+
+  // Look up intercepted filename for a DOM image src
+  lookupImageFilename: function (url) {
+    if (!url || typeof url !== 'string') return '';
+    const direct = this.imageFilenameMap.get(url);
+    if (direct) return direct;
+    const normalized = this.normalizeImageUrl(url);
+    return normalized ? (this.imageFilenameMap.get(normalized) || '') : '';
+  },
+
+  // Register callback notified when asynchronous RPC interception yields new image filenames
+  setOnImageFilenamesUpdated: function (callback) {
+    this._onImageFilenamesUpdated = typeof callback === 'function' ? callback : null;
+  },
+
+  // Bind postMessage bridge with the MAIN world RPC interceptor and request any buffered entries
+  initImageFilenameBridge: function () {
+    if (this._interceptorBridgeBound || typeof window === 'undefined' || !window.addEventListener) return;
+    this._interceptorBridgeBound = true;
+
+    window.addEventListener('message', (event) => {
+      if (event.source !== window || event.origin !== window.location.origin) return;
+      const data = event.data;
+      if (!data || data.source !== 'gemiboost-main' || data.type !== 'IMAGE_FILENAMES') return;
+      if (!Array.isArray(data.entries) || data.entries.length === 0) return;
+
+      const hasUpdates = this.registerImageFilenames(data.entries);
+      if (hasUpdates && typeof this._onImageFilenamesUpdated === 'function') {
+        this._onImageFilenamesUpdated();
+      }
+    });
+
+    try {
+      window.postMessage(
+        {
+          source: 'gemiboost-isolated',
+          type: 'REQUEST_IMAGE_FILENAMES'
+        },
+        window.location.origin
+      );
+    } catch (e) {}
+  },
+
   // Extract and clean raw prompt text from a query DOM node, stripping hidden screen reader labels
   getCleanPromptText: function (promptEl) {
     return GemiBoost.Utils ? GemiBoost.Utils.getCleanPromptText(promptEl) : '';
+  },
+
+  // Extract prompt text while excluding any attachment/quote DOM subtrees nested inside the text container
+  getPromptTextWithoutAttachments: function (promptEl, attachmentEls = []) {
+    if (!promptEl) return '';
+    const textNode = promptEl.querySelector?.(GemiBoost.Config.SELECTORS.QUERY_TEXT) || promptEl;
+    const hasNestedAttachments =
+      textNode === promptEl ||
+      (typeof textNode.contains === 'function' && attachmentEls.some((el) => el && textNode.contains(el)));
+
+    if (!hasNestedAttachments || typeof textNode.cloneNode !== 'function') {
+      return this.getCleanPromptText(promptEl);
+    }
+
+    const clone = textNode.cloneNode(true);
+    const selectorsToStrip = [
+      GemiBoost.Config.SELECTORS.FILE_CONTAINER,
+      GemiBoost.Config.SELECTORS.QUOTE_CONTAINER,
+      '[data-test-id*="file-preview"]',
+      '[data-test-id*="attachment"]'
+    ].filter(Boolean).join(', ');
+
+    if (selectorsToStrip && typeof clone.querySelectorAll === 'function') {
+      clone.querySelectorAll(selectorsToStrip).forEach((el) => el.remove());
+    }
+
+    let text = clone.textContent ? clone.textContent.trim() : '';
+    const hiddenLabel = promptEl.querySelector?.(GemiBoost.Config.SELECTORS.HIDDEN_LABEL);
+    if (hiddenLabel && hiddenLabel.textContent) {
+      const hiddenText = hiddenLabel.textContent.trim();
+      if (text.startsWith(hiddenText)) {
+        text = text.substring(hiddenText.length).trim();
+      }
+    }
+    return text;
+  },
+
+  // Extract structured file metadata (full filename with extension, fileType, folder flag, category)
+  extractFileInfo: function (fileEl, fileText) {
+    const text = fileText || (fileEl && fileEl.textContent ? fileEl.textContent.trim() : '');
+    const lines = text.split('\n').map((l) => l.trim()).filter((l) => l);
+    const labelEl = fileEl && fileEl.querySelector?.('[data-test-id="filename-label"], .filename-label');
+    const labelText = labelEl && labelEl.textContent ? labelEl.textContent.trim() : '';
+    const visibleName = labelText || (lines.length > 1 ? lines[lines.length - 1] : (lines[0] || ''));
+
+    const isFolder = Boolean(
+      fileEl && (
+        (fileEl.querySelector?.('mat-icon') && fileEl.querySelector('mat-icon').textContent.trim().toLowerCase().includes('folder')) ||
+        fileEl.querySelector?.('[aria-label*="folder" i]') !== null ||
+        fileEl.querySelector?.('[class*="folder"]') !== null ||
+        fileEl.querySelector?.('img[alt*="folder" i]') !== null
+      )
+    );
+
+    let fullFileName = visibleName;
+    let resolvedName = visibleName;
+    const attrCandidates = [];
+    if (fileEl) {
+      attrCandidates.push(
+        fileEl.getAttribute?.('data-filename'),
+        fileEl.getAttribute?.('data-name')
+      );
+      const dataFileEl = fileEl.querySelector?.('[data-filename], [data-name]');
+      if (dataFileEl) {
+        attrCandidates.push(
+          dataFileEl.getAttribute?.('data-filename'),
+          dataFileEl.getAttribute?.('data-name')
+        );
+      }
+      const buttons = fileEl.querySelectorAll?.('button[aria-label]') || [];
+      for (const btn of buttons) {
+        const label = btn.getAttribute?.('aria-label');
+        if (label) attrCandidates.push(label);
+      }
+      attrCandidates.push(
+        fileEl.getAttribute?.('aria-label'),
+        fileEl.getAttribute?.('title')
+      );
+    }
+
+    const visibleLower = visibleName.toLowerCase();
+    const visiblePrefix = visibleName.replace(/\.+$/, '').toLowerCase();
+    let matchedFullAttr = false;
+
+    for (const rawCand of attrCandidates) {
+      if (!rawCand || typeof rawCand !== 'string') continue;
+      const cand = rawCand.trim();
+      if (!cand) continue;
+      const cleaned = cand
+        .replace(/^(?:open|view|preview|download|remove|delete|打开|查看|预览|下载|移除|删除)\s+/i, '')
+        .trim();
+      if (!cleaned) continue;
+
+      const candExtMatch = cleaned.match(/\.([a-zA-Z0-9]{1,10})$/);
+      if (candExtMatch) {
+        fullFileName = cleaned;
+        const baseName = cleaned.slice(0, candExtMatch.index).toLowerCase();
+        if (
+          !visibleName ||
+          cleaned.toLowerCase() === visibleLower ||
+          visibleLower === baseName ||
+          (baseName.length >= 2 && visibleLower.includes(baseName)) ||
+          (visiblePrefix.length >= 3 && visibleName.endsWith('...') && baseName.startsWith(visiblePrefix))
+        ) {
+          resolvedName = cleaned;
+          matchedFullAttr = true;
+        }
+        break;
+      }
+      if (!fullFileName) {
+        fullFileName = cleaned;
+      }
+    }
+
+    let fileType = 'File';
+    let ext = '';
+    const extMatch = fullFileName.match(/\.([a-zA-Z0-9]+)$/);
+    if (extMatch) {
+      ext = extMatch[1].toUpperCase();
+      fileType = ext;
+    } else if (isFolder) {
+      fileType = 'Folder';
+    } else if (fileEl) {
+      const iconImg = fileEl.querySelector?.('img[alt*="icon" i]');
+      if (iconImg && iconImg.alt) {
+        const altType = iconImg.alt.replace(/icon/i, '').trim().toUpperCase();
+        if (altType.length > 0 && altType.length <= 5) {
+          fileType = altType;
+          ext = altType;
+        }
+      }
+    }
+
+    // Strip redundant leading type badge (e.g. "PDF attention_is_all_you_need") if no full filename attr matched
+    if (!matchedFullAttr && ext && resolvedName && fileEl && typeof fileEl.querySelectorAll === 'function') {
+      const upperResolved = resolvedName.toUpperCase();
+      if (upperResolved.startsWith(ext) && resolvedName.length > ext.length) {
+        const remainder = resolvedName.slice(ext.length).trim();
+        if (remainder) {
+          const allChildren = Array.from(fileEl.querySelectorAll('*') || []);
+          const hasBadgeChild = allChildren.some(
+            (child) => (!child.children || child.children.length === 0) && (child.textContent || '').trim().toUpperCase() === ext
+          );
+          if (hasBadgeChild) {
+            resolvedName = remainder;
+          }
+        }
+      }
+    }
+
+    const fileCategory = this.detectFileCategory(fileType, fullFileName, isFolder);
+
+    return {
+      visibleName,
+      fileName: resolvedName || visibleName,
+      fullFileName,
+      fileType,
+      ext,
+      isFolder,
+      fileCategory
+    };
   },
 
   // Extract structured prompt data items from the current live DOM for TOC navigation
@@ -21,8 +258,7 @@ GemiBoost.Extractor = {
       promptEl.dataset.gbQueryIndex = String(index);
 
       // 1. Text extraction using textContent to prevent empty string from off-screen / content-visibility
-      let text = this.getCleanPromptText(promptEl);
-      const rawText = text;
+      const rawText = this.getCleanPromptText(promptEl);
       const fileTexts = new Set();
 
       // 2. Extract independent images (filter out user avatar and Google profile icons)
@@ -46,6 +282,8 @@ GemiBoost.Extractor = {
       const topLevelFiles = rawFiles.filter(
         (el) => !rawFiles.some((other) => other !== el && other.contains(el))
       );
+      let text = this.getPromptTextWithoutAttachments(promptEl, topLevelFiles);
+      let hasQuote = false;
       const fileInfoList = [];
 
       topLevelFiles.forEach((file, fileIndex) => {
@@ -53,18 +291,11 @@ GemiBoost.Extractor = {
         if (!fileText || fileTexts.has(fileText)) return;
         fileTexts.add(fileText);
 
-        if (text.includes(fileText)) {
-          text = text.replace(fileText, '').trim();
-        }
-
         // Check if container represents a quoted text selection (Ask Gemini)
         const isQuote = this.isQuoteElement(file, fileText);
         if (isQuote) {
+          hasQuote = true;
           const cleanQuote = this.extractCleanQuoteText(file) || fileText.replace(/^[↪↳↵⤷↩⮑⮡➜➔→"“'「『«\s]+/, '').replace(/\s+/g, ' ').trim();
-          if (cleanQuote && text.includes(cleanQuote)) {
-            text = text.replace(cleanQuote, '').trim();
-          }
-          text = text.replace(/^[↪↳↵⤷↩⮑⮡➜➔→"“'「『«\s]+/, '').trim();
           fileInfoList.push({
             fileName: cleanQuote,
             fileType: 'Quote',
@@ -75,41 +306,18 @@ GemiBoost.Extractor = {
           return;
         }
 
-        const lines = fileText.split('\n').map((l) => l.trim()).filter((l) => l);
-        const fName = lines.length > 1 ? lines[lines.length - 1] : lines[0];
-
-        let fileType = 'File';
-        let fullFileName = fName;
-        const btn = file.querySelector('button[aria-label]');
-        if (btn && btn.getAttribute('aria-label')) {
-          fullFileName = btn.getAttribute('aria-label');
-        }
-
-        // Detect if container represents a Google Drive folder or directory
-        const isFolder =
-          (file.querySelector('mat-icon') && file.querySelector('mat-icon').textContent.trim().toLowerCase().includes('folder')) ||
-          file.querySelector('[aria-label*="folder" i]') !== null ||
-          file.querySelector('[class*="folder"]') !== null ||
-          file.querySelector('img[alt*="folder" i]') !== null;
-
-        const extMatch = fullFileName.match(/\.([a-zA-Z0-9]+)$/);
-        if (extMatch) {
-          fileType = extMatch[1].toUpperCase();
-        } else if (isFolder) {
-          fileType = 'Folder';
-        } else {
-          const iconImg = file.querySelector('img[alt*="icon" i]');
-          if (iconImg && iconImg.alt) {
-            const altType = iconImg.alt.replace(/icon/i, '').trim().toUpperCase();
-            if (altType.length > 0 && altType.length <= 5) {
-              fileType = altType;
-            }
-          }
-        }
-
-        const fileCategory = this.detectFileCategory(fileType, fullFileName, isFolder);
-        fileInfoList.push({ fileName: fName, fileType: fileType, fileCategory: fileCategory, subIndex: fileIndex });
+        const fMeta = this.extractFileInfo(file, fileText);
+        fileInfoList.push({
+          fileName: fMeta.fileName,
+          fileType: fMeta.fileType,
+          fileCategory: fMeta.fileCategory,
+          subIndex: fileIndex
+        });
       });
+
+      if (hasQuote && text) {
+        text = text.replace(/^[↪↳↵⤷↩⮑⮡➜➔→]+\s*/, '').trim();
+      }
 
       const hasImages = validImages.length > 0;
       const hasFiles = fileInfoList.length > 0;
@@ -268,51 +476,74 @@ GemiBoost.Extractor = {
         clean === '上传的图片' ||
         clean === '图片预览' ||
         clean === '图片' ||
+        clean.includes('in a lightbox') ||
+        clean.startsWith('show the uploaded image') ||
         clean.startsWith('view image') ||
         clean.startsWith('remove image') ||
-        clean.startsWith('delete image')
+        clean.startsWith('delete image') ||
+        clean.startsWith('查看图片') ||
+        clean.startsWith('查看大图') ||
+        clean.startsWith('在灯箱中显示')
       );
     };
 
-    // 1. Look for explicit real filename on img or its container hierarchy
+    // 1. Check explicit filename attributes and intercepted RPC metadata (without stripping name prefixes)
     let realName = '';
-    const candidates = [
+    const imgSrc = img.currentSrc || img.src || (img.getAttribute && img.getAttribute('src')) || '';
+    const interceptedName = this.lookupImageFilename(imgSrc);
+    const directCandidates = [
       img.getAttribute('data-filename'),
       img.getAttribute('data-name'),
-      img.title,
-      img.alt
+      interceptedName
     ];
 
     const container = img.closest(
       '.file-preview-container, [class*="file-preview"], [class*="image-preview"], [class*="preview"], [role="group"]'
     );
     if (container) {
-      candidates.push(
+      directCandidates.push(
         container.getAttribute('data-filename'),
-        container.getAttribute('data-name'),
-        container.title,
-        container.getAttribute('aria-label')
+        container.getAttribute('data-name')
       );
+    }
 
-      // Button inside container (e.g. view full screen or remove)
-      const btn = container.querySelector('button[aria-label]');
-      if (btn) {
-        const btnLabel = btn.getAttribute('aria-label');
-        if (btnLabel && !isPlaceholder(btnLabel)) {
-          // If aria-label looks like "Remove 000217.png" or "000217.png"
-          const match = btnLabel.match(/([^\s\/\\:*\?"<>|]+\.[a-zA-Z0-9]{2,5})/);
-          if (match) candidates.push(match[1]);
-          else candidates.push(btnLabel);
-        }
+    for (const cand of directCandidates) {
+      if (cand && !isPlaceholder(cand)) {
+        realName = cand.trim();
+        break;
       }
     }
 
-    for (const cand of candidates) {
-      if (cand && !isPlaceholder(cand)) {
-        let cleaned = cand.replace(/^(remove|delete|view)\s+/i, '').trim();
-        if (cleaned && !isPlaceholder(cleaned)) {
-          realName = cleaned;
-          break;
+    // 2. Fallback to heuristic DOM title/alt/aria-label attributes
+    if (!realName) {
+      const heuristicCandidates = [img.title, img.alt];
+
+      if (container) {
+        heuristicCandidates.push(
+          container.title,
+          container.getAttribute('aria-label')
+        );
+
+        // Check buttons inside container (e.g. view full screen or remove)
+        const btns = container.querySelectorAll('button[aria-label]');
+        for (const btn of btns) {
+          const btnLabel = btn.getAttribute('aria-label');
+          if (btnLabel && !isPlaceholder(btnLabel)) {
+            // If aria-label looks like "Remove 000217.png" or "000217.png"
+            const match = btnLabel.match(/([^\s\/\\:*\?"<>|]+\.[a-zA-Z0-9]{2,5})/);
+            if (match) heuristicCandidates.push(match[1]);
+            else heuristicCandidates.push(btnLabel);
+          }
+        }
+      }
+
+      for (const cand of heuristicCandidates) {
+        if (cand && !isPlaceholder(cand)) {
+          const cleaned = cand.replace(/^(remove|delete|view)\s+/i, '').trim();
+          if (cleaned && !isPlaceholder(cleaned)) {
+            realName = cleaned;
+            break;
+          }
         }
       }
     }
@@ -409,6 +640,28 @@ GemiBoost.Extractor = {
     if (!fileEl) return false;
     const text = fileText || fileEl.textContent || '';
     const cleanText = text.trim();
+
+    // 0. Explicit file attachment indicators (Luminous file cards or filename-only aria-labels) are never quotes
+    if (
+      fileEl.matches?.('[data-test-id="uploaded-file"], .new-file-preview-container, .new-file-preview-file') ||
+      fileEl.querySelector?.('[data-test-id="uploaded-file"], [data-test-id="filename-label"], [data-test-id="luminous-file-icon"], .new-file-preview-file')
+    ) {
+      return false;
+    }
+    const btns = fileEl.querySelectorAll?.('button[aria-label]') || [];
+    for (const btn of btns) {
+      const label = (btn.getAttribute?.('aria-label') || '').trim();
+      const cleanedLabel = label
+        .replace(/^(?:open|view|preview|download|remove|delete|打开|查看|预览|下载|移除|删除)\s+/i, '')
+        .trim();
+      if (
+        cleanedLabel.length <= 150 &&
+        !/^https?:\/\//i.test(cleanedLabel) &&
+        /^[^\/\\:*?"<>|\r\n]+\.[a-zA-Z0-9]{1,8}$/.test(cleanedLabel)
+      ) {
+        return false;
+      }
+    }
 
     // 1. Selector match on container itself or descendant quote wrappers (e.g. .submitted-quote-container, blockquote)
     if (GemiBoost.Config?.SELECTORS?.QUOTE_CONTAINER) {
@@ -552,8 +805,7 @@ GemiBoost.Extractor = {
 
   // Extract structured user turn (text content and attached multimodal files)
   extractUserTurn: function (promptEl) {
-    // A. Text content
-    let text = this.getCleanPromptText(promptEl);
+    // A. Collect image attachments
     const attachments = [];
 
     // B. Images uploaded by user
@@ -594,6 +846,8 @@ GemiBoost.Extractor = {
       (el) => !rawFileElements.some((other) => other !== el && other.contains(el))
     );
 
+    let text = this.getPromptTextWithoutAttachments(promptEl, fileElements);
+    let hasQuote = false;
     const seenFileTexts = new Set();
     const seenAttachments = new Set();
 
@@ -608,6 +862,7 @@ GemiBoost.Extractor = {
 
       // Check if container represents a quoted text selection (Ask Gemini)
       if (this.isQuoteElement(fileEl, fileText)) {
+        hasQuote = true;
         const cleanQuote = this.extractCleanQuoteText(fileEl) || fileText.replace(/^[↪↳↵⤷↩⮑⮡➜➔→"“'「『«\s]+/, '').replace(/\s+/g, ' ').trim();
         // Quote represents conversation context, keep full text without 100-char truncation
         const attTag = `[Quote] ${cleanQuote}`;
@@ -615,50 +870,35 @@ GemiBoost.Extractor = {
           seenAttachments.add(attTag);
           attachments.push(attTag);
         }
-        if (fileText && text.includes(fileText)) {
-          text = text.replace(fileText, '').trim();
-        }
-        if (cleanQuote && text.includes(cleanQuote)) {
-          text = text.replace(cleanQuote, '').trim();
-        }
-        text = text.replace(/^[↪↳↵⤷↩⮑⮡➜➔→"“'「『«\s]+/, '').trim();
         return;
       }
 
+      const fMeta = this.extractFileInfo(fileEl, fileText);
       const lower = fileText.toLowerCase();
-      const elHtml = fileEl.outerHTML.toLowerCase();
+      const lowerFull = (fMeta.fullFileName || '').toLowerCase();
+      const elHtml = (fileEl.outerHTML || '').toLowerCase();
 
       const isYouTube =
         lower.includes('youtube') ||
         elHtml.includes('youtube') ||
         elHtml.includes('youtu.be') ||
-        /\.(mp4|mov|webm|mkv)($|\s)/i.test(lower);
+        /\.(mp4|mov|webm|mkv)($|\s)/i.test(lowerFull);
       const isAudio =
-        /\.(mp3|wav|m4a|aac|ogg|flac)($|\s)/i.test(lower) ||
+        /\.(mp3|wav|m4a|aac|ogg|flac)($|\s)/i.test(lowerFull) ||
         elHtml.includes('audio') ||
         fileEl.querySelector('audio');
-      const isPdf = /\.pdf($|\s)/i.test(lower);
-      const isMarkdown = /\.(md|markdown)($|\s)/i.test(lower);
-      const isImageFile = /\.(png|jpe?g|gif|webp|bmp|svg)($|\s)/i.test(lower);
-      const isFolder =
-        (fileEl.querySelector('mat-icon') && fileEl.querySelector('mat-icon').textContent.trim().toLowerCase().includes('folder')) ||
-        fileEl.querySelector('[aria-label*="folder" i]') !== null ||
-        fileEl.querySelector('[class*="folder"]') !== null ||
-        fileEl.querySelector('img[alt*="folder" i]') !== null;
-      const hasFileExtension = /\.[a-zA-Z0-9]{2,5}($|\s)/.test(lower);
+      const isImageFile = /\.(png|jpe?g|gif|webp|bmp|svg)($|\s)/i.test(lowerFull);
+      const hasFileExtension = /\.[a-zA-Z0-9]{1,10}($|\s)/.test(lowerFull);
 
-      const lines = fileText.split('\n').map((l) => l.trim()).filter((l) => l);
-      const fName = lines.length > 1 ? lines[lines.length - 1] : lines[0];
-      const extMatch = fName.match(/\.([a-zA-Z0-9]+)$/);
-      const ext = extMatch ? extMatch[1].toUpperCase() : '';
-      const category = this.detectFileCategory(ext, fName, isFolder);
+      const fName = fMeta.fileName;
+      const ext = fMeta.ext;
+      const category = fMeta.fileCategory;
 
       let attTag = '';
       if (isYouTube) {
         attTag = '[YouTube Video]';
       } else if (category === 'folder') {
-        const folderName = fName || 'Folder';
-        attTag = `[Folder] ${folderName}`;
+        attTag = `[Folder] ${fName || 'Folder'}`;
       } else if (category === 'audio') {
         attTag = `[Audio] ${fName || 'Audio File'}`;
       } else if (category === 'video') {
@@ -687,11 +927,11 @@ GemiBoost.Extractor = {
         seenAttachments.add(attTag);
         attachments.push(attTag);
       }
-
-      if (fileText && text.includes(fileText)) {
-        text = text.replace(fileText, '').trim();
-      }
     });
+
+    if (hasQuote && text) {
+      text = text.replace(/^[↪↳↵⤷↩⮑⮡➜➔→]+\s*/, '').trim();
+    }
 
     return {
       text,
@@ -843,3 +1083,5 @@ GemiBoost.Extractor = {
     };
   }
 };
+
+GemiBoost.Extractor.initImageFilenameBridge();

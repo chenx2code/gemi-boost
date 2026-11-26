@@ -7,6 +7,7 @@ on:
             paths:
                   - "manifest.json"
                   - "background.js"
+                  - "content-interceptor.js"
                   - "content-config.js"
                   - "content-utils.js"
                   - "content-storage.js"
@@ -62,6 +63,7 @@ jobs:
                             manifest.json \
                             styles.css \
                             background.js \
+                            content-interceptor.js \
                             content-config.js \
                             content-utils.js \
                             content-storage.js \

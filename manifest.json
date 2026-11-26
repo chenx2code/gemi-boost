@@ -29,6 +29,12 @@
   "content_scripts": [
     {
       "matches": ["https://gemini.google.com/app*"],
+      "js": ["content-interceptor.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://gemini.google.com/app*"],
       "css": ["styles.css"],
       "js": [
         "content-config.js",

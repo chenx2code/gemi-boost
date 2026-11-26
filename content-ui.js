@@ -784,6 +784,17 @@ GemiBoost.UI = {
       const textSpan = document.createElement('span');
       textSpan.className = 'gemiboost-item-text';
 
+      const isAttachmentItem = item.type === 'image' || item.type === 'file';
+      const category = isAttachmentItem
+        ? (item.fileCategory || (GemiBoost.Extractor && GemiBoost.Extractor.detectFileCategory
+          ? GemiBoost.Extractor.detectFileCategory(item.fileType, item.fileName)
+          : (item.type === 'image' ? 'image' : 'file')))
+        : '';
+
+      if (isAttachmentItem && category !== 'quote') {
+        textSpan.classList.add('gemiboost-item-single');
+      }
+
       // Insert attachment icon for image or file items (aligned with prompt text)
       if (item.type === 'image') {
         const imgIcon = document.createElement('span');
@@ -792,10 +803,6 @@ GemiBoost.UI = {
         imgIcon.innerHTML = this.getAttachmentIconSvg('image');
         textSpan.appendChild(imgIcon);
       } else if (item.type === 'file') {
-        const category = item.fileCategory || (GemiBoost.Extractor && GemiBoost.Extractor.detectFileCategory
-          ? GemiBoost.Extractor.detectFileCategory(item.fileType, item.fileName)
-          : 'file');
-
         const fileIcon = document.createElement('span');
         fileIcon.className = `gemiboost-inline-icon gemiboost-icon-${category}`;
         fileIcon.title = (category === 'quote' ? strings.quoteLabel : item.fileType) || strings.fileLabel;
@@ -818,7 +825,9 @@ GemiBoost.UI = {
             clean === '[image]' ||
             clean === '图片' ||
             clean === '上传的图片预览' ||
-            clean === '图片预览'
+            clean === '图片预览' ||
+            clean.includes('in a lightbox') ||
+            clean.startsWith('show the uploaded image')
           );
         };
 
@@ -830,12 +839,9 @@ GemiBoost.UI = {
         }
       }
 
-      if (item.type === 'file' || item.type === 'image') {
+      if (isAttachmentItem) {
         const tagMatch = displayContent.match(/^(\[[^\]]+\])\s*(.*)$/);
         if (tagMatch) {
-          const category = item.fileCategory || (GemiBoost.Extractor && GemiBoost.Extractor.detectFileCategory
-            ? GemiBoost.Extractor.detectFileCategory(item.fileType, item.fileName)
-            : (item.type === 'image' ? 'image' : 'file'));
           const tagSpan = document.createElement('span');
           tagSpan.className = `gemiboost-type-tag gemiboost-type-tag-${category}`;
           tagSpan.textContent = tagMatch[1];

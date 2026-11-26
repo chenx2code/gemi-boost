@@ -231,6 +231,47 @@ GemiBoost.Storage = {
         }
       }
 
+      // Upgrade matched image items when live DOM resolves a real filename over a stale placeholder
+      let searchFrom = 0;
+      for (const d of domItems) {
+        const idx = updated.findIndex((c, i) => i >= searchFrom && isMatch(c, d));
+        if (idx !== -1) {
+          searchFrom = idx + 1;
+          const c = updated[idx];
+          const shouldUpgradeImage =
+            c.type === 'image' &&
+            d.type === 'image' &&
+            c.isDefaultName &&
+            !d.isDefaultName;
+          const dBase = d.fileName ? d.fileName.replace(/\.[^.]+$/, '').toLowerCase() : '';
+          const shouldUpgradeFile =
+            c.type === 'file' &&
+            d.type === 'file' &&
+            c.fileName &&
+            d.fileName &&
+            d.fileName !== c.fileName &&
+            (
+              d.fileName.toLowerCase().startsWith(c.fileName.toLowerCase() + '.') ||
+              (dBase.length >= 2 && c.fileName.toLowerCase().includes(dBase))
+            );
+
+          if (shouldUpgradeImage || shouldUpgradeFile) {
+            updated[idx] = {
+              ...c,
+              fileType: d.fileType,
+              fileCategory: d.fileCategory || c.fileCategory,
+              fileName: d.fileName,
+              display: d.display,
+              title: d.title,
+              isDefaultName: false,
+              imageIndex: d.imageIndex,
+              totalImages: d.totalImages
+            };
+            hasChanges = true;
+          }
+        }
+      }
+
       if (hasChanges) {
         updated = this.normalizeItems(updated);
       }
