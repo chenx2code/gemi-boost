@@ -385,9 +385,28 @@ body[data-theme="dark"],
   font-size: 13.5px;
   line-height: 1.42;
   color: var(--gb-text-primary);
+  text-indent: 0;
   cursor: pointer;
   position: relative;
   transition: background-color 0.35s cubic-bezier(0.2, 0, 0, 1), color 0.18s ease;
+}
+
+/* Tighten spacing between a prompt (or item) and its subsequent attachment rows */
+.gemiboost-toc-item:has(+ .gemiboost-toc-attachment) {
+  margin-bottom: 1px;
+  padding-bottom: 4px;
+}
+
+.gemiboost-toc-item.gemiboost-toc-attachment {
+  margin: 1px 4px;
+  padding: 3px 10px;
+  border-radius: 8px;
+  text-indent: 0;
+}
+
+/* Keep clear visual separation after the last attachment before the next turn */
+.gemiboost-toc-item.gemiboost-toc-attachment:has(+ .gemiboost-toc-item:not(.gemiboost-toc-attachment)) {
+  margin-bottom: 8px;
 }
 
 .gemiboost-toc-item:hover {
@@ -468,7 +487,7 @@ body[data-theme="dark"],
   width: 18px;
   height: 18px;
   border-radius: 4px;
-  margin-right: 5px;
+  margin: 0 5px 0 0;
   vertical-align: -3px;
   flex-shrink: 0;
 }
@@ -518,6 +537,15 @@ body[data-theme="dark"],
   -webkit-box-orient: vertical;
   overflow: hidden;
   word-break: break-word;
+  text-indent: 0;
+}
+
+.gemiboost-item-text.gemiboost-item-single {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: normal;
 }
 
 /* Empty State */

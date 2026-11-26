@@ -163,28 +163,118 @@ GemiBoost.Storage = {
       return { items: cachedItems, hasChanges: false, isCorrupted: false };
     }
 
+    // Sequential forward alignment tolerating repeated prompts (e.g. "Continue", empty image turns)
     const isMatch = (a, b) =>
       a.type === b.type &&
       a.rawText === b.rawText &&
       (a.subIndex === b.subIndex || (a.subIndex === undefined && b.subIndex === undefined));
 
-    // Validate relative order of cachedItems against domItems
-    // domItems reflects the ground-truth top-to-bottom order from the DOM
-    let lastFoundIndex = -1;
-    let isCorrupted = false;
+    const matchDomToCache = (domList, cacheList) => {
+      const mapping = new Array(domList.length).fill(-1);
+      if (domList.length === 0 || cacheList.length === 0) return { mapping, isCorrupted: false };
 
-    for (const d of domItems) {
-      const idx = cachedItems.findIndex((c) => isMatch(c, d));
-      if (idx !== -1) {
-        if (idx < lastFoundIndex) {
-          isCorrupted = true;
+      // Check forward monotonic alignment across possible starting offsets in cache
+      const firstDom = domList[0];
+      const startCandidates = [];
+      for (let ci = 0; ci < cacheList.length; ci++) {
+        if (isMatch(cacheList[ci], firstDom)) {
+          startCandidates.push(ci);
+        }
+      }
+      if (startCandidates.length === 0) {
+        startCandidates.push(0);
+      }
+
+      let bestMapping = null;
+      let bestMatchCount = -1;
+      let anyValidOrder = false;
+
+      for (const startIdx of startCandidates) {
+        const candidateMap = new Array(domList.length).fill(-1);
+        let cursor = startIdx;
+        let matchCount = 0;
+
+        for (let di = 0; di < domList.length; di++) {
+          const d = domList[di];
+          let found = -1;
+          for (let ci = cursor; ci < cacheList.length; ci++) {
+            if (isMatch(cacheList[ci], d)) {
+              found = ci;
+              break;
+            }
+          }
+          if (found !== -1) {
+            candidateMap[di] = found;
+            cursor = found + 1;
+            matchCount++;
+          }
+        }
+
+        // Verify matched items never collide out-of-order against unmatched earlier cache entries
+        if (matchCount > bestMatchCount) {
+          bestMatchCount = matchCount;
+          bestMapping = candidateMap;
+        }
+        if (matchCount === domList.length) {
+          anyValidOrder = true;
           break;
         }
-        lastFoundIndex = idx;
       }
-    }
 
-    if (isCorrupted) {
+      if (!anyValidOrder && bestMapping) {
+        // Detect genuine out-of-order corruption inside matched cache range without false positives on newly appended repeated prompts
+        let firstMatchedDom = -1;
+        let lastMatchedDom = -1;
+        let firstMatchedCacheIdx = -1;
+        let lastMatchedCacheIdx = -1;
+        const matchedCacheSet = new Set();
+
+        for (let di = 0; di < domList.length; di++) {
+          const ci = bestMapping[di];
+          if (ci !== -1) {
+            if (firstMatchedDom === -1) {
+              firstMatchedDom = di;
+              firstMatchedCacheIdx = ci;
+            }
+            lastMatchedDom = di;
+            lastMatchedCacheIdx = ci;
+            matchedCacheSet.add(ci);
+          }
+        }
+
+        if (firstMatchedDom !== -1) {
+          let prevCacheIdx = -1;
+          for (let di = 0; di < domList.length; di++) {
+            const ci = bestMapping[di];
+            if (ci !== -1) {
+              prevCacheIdx = ci;
+              continue;
+            }
+            // Case 1: Interior unmatched DOM item exists strictly before current matched cursor
+            if (di > firstMatchedDom && di < lastMatchedDom && prevCacheIdx !== -1) {
+              const earlierIdx = cacheList.findIndex((c, idx) => idx < prevCacheIdx && !matchedCacheSet.has(idx) && isMatch(c, domList[di]));
+              if (earlierIdx !== -1) {
+                return { mapping: bestMapping, isCorrupted: true };
+              }
+            }
+            // Case 2: Unmatched DOM item corresponds to an unmatched cache item skipped strictly inside [firstMatchedCacheIdx, lastMatchedCacheIdx]
+            if (di > firstMatchedDom) {
+              const skippedInteriorIdx = cacheList.findIndex(
+                (c, idx) => idx > firstMatchedCacheIdx && idx < lastMatchedCacheIdx && !matchedCacheSet.has(idx) && isMatch(c, domList[di])
+              );
+              if (skippedInteriorIdx !== -1) {
+                return { mapping: bestMapping, isCorrupted: true };
+              }
+            }
+          }
+        }
+      }
+
+      return { mapping: bestMapping || mapping, isCorrupted: false };
+    };
+
+    const initialAlignment = matchDomToCache(domItems, cachedItems);
+    if (initialAlignment.isCorrupted) {
       console.warn('[GemiBoost] Detected out-of-order cached items. Resetting cache to restore DOM order.');
       const chatId = GemiBoost.Utils.getChatId();
       if (chatId) this.clearChatCache(chatId);
@@ -195,11 +285,10 @@ GemiBoost.Storage = {
     if (isFullySynced) {
       let firstDomMatch = -1;
       let lastDomMatch = -1;
+      const domToCacheIdx = initialAlignment.mapping;
 
       for (let i = 0; i < domItems.length; i++) {
-        const d = domItems[i];
-        const inCache = cachedItems.some((c) => isMatch(c, d));
-        if (inCache) {
+        if (domToCacheIdx[i] !== -1) {
           if (firstDomMatch === -1) firstDomMatch = i;
           lastDomMatch = i;
         }
@@ -207,10 +296,12 @@ GemiBoost.Storage = {
 
       let updated = [...cachedItems];
       let hasChanges = false;
+      let prependedCount = 0;
 
       // 1. Prepend historical items loaded at the top
       if (firstDomMatch > 0) {
         const prepended = domItems.slice(0, firstDomMatch);
+        prependedCount = prepended.length;
         updated = [...prepended, ...updated];
         hasChanges = true;
       }
@@ -222,12 +313,97 @@ GemiBoost.Storage = {
         hasChanges = true;
       }
 
-      // 3. Fallback: If no DOM items matched cached items, append all new items that are not in cache
+      // 3. Fallback: If no DOM items matched cached items, append all new items
       if (firstDomMatch === -1 && domItems.length > 0) {
-        const newItems = domItems.filter((d) => !cachedItems.some((c) => isMatch(c, d)));
+        const usedCacheIdx = new Set();
+        const newItems = domItems.filter((d) => {
+          const found = cachedItems.findIndex((c, idx) => !usedCacheIdx.has(idx) && isMatch(c, d));
+          if (found !== -1) {
+            usedCacheIdx.add(found);
+            return false;
+          }
+          return true;
+        });
         if (newItems.length > 0) {
           updated = [...cachedItems, ...newItems];
           hasChanges = true;
+        }
+      }
+
+      // Upgrade matched image and file items when live DOM resolves a fuller filename
+      const stripKnownPrefix = (name, typeTag) => {
+        if (!name || !typeTag) return name;
+        const prefix = typeTag + ' ';
+        if (name.toUpperCase().startsWith(prefix.toUpperCase())) {
+          return name.slice(prefix.length).trim();
+        }
+        return name;
+      };
+
+      const matchedCacheIndicesForDom = new Set();
+      for (let di = 0; di < domItems.length; di++) {
+        const d = domItems[di];
+        let idx = domToCacheIdx[di] !== -1 ? domToCacheIdx[di] + prependedCount : -1;
+        if (idx === -1 && lastDomMatch !== -1 && di > lastDomMatch) {
+          const appendedPos = cachedItems.length + prependedCount + (di - lastDomMatch - 1);
+          if (appendedPos < updated.length && isMatch(updated[appendedPos], d)) {
+            idx = appendedPos;
+          }
+        }
+        if (idx === -1 && firstDomMatch > 0 && di < firstDomMatch) {
+          if (di < updated.length && isMatch(updated[di], d)) {
+            idx = di;
+          }
+        }
+        if (idx !== -1 && idx < updated.length) {
+          matchedCacheIndicesForDom.add(idx);
+          const c = updated[idx];
+          const shouldUpgradeImage =
+            c.type === 'image' &&
+            d.type === 'image' &&
+            c.isDefaultName &&
+            !d.isDefaultName;
+
+          const isQuotePair =
+            c.fileCategory === 'quote' ||
+            d.fileCategory === 'quote' ||
+            c.fileType === 'Quote' ||
+            d.fileType === 'Quote';
+
+          let shouldUpgradeFile = false;
+          if (!isQuotePair && c.type === 'file' && d.type === 'file' && c.fileName && d.fileName && d.fileName !== c.fileName) {
+            const cLower = c.fileName.toLowerCase();
+            const dLower = d.fileName.toLowerCase();
+            const cHasExt = /\.[a-zA-Z0-9]{1,10}$/.test(c.fileName);
+            const dHasExt = /\.[a-zA-Z0-9]{1,10}$/.test(d.fileName);
+            const cCleanLower = stripKnownPrefix(c.fileName, c.fileType).toLowerCase();
+            const cTruncPrefix = cLower.replace(/[.\u2026]+$/, '');
+            const dBaseLower = dLower.replace(/\.[^.]+$/, '');
+
+            if (!cHasExt && dHasExt) {
+              shouldUpgradeFile =
+                dLower.startsWith(cLower + '.') ||
+                dLower.startsWith(cCleanLower + '.') ||
+                ((c.fileName.endsWith('...') || c.fileName.endsWith('…')) && cTruncPrefix.length >= 3 && dBaseLower.startsWith(cTruncPrefix));
+            } else if (!cHasExt && !dHasExt && cCleanLower !== cLower && dLower === cCleanLower) {
+              shouldUpgradeFile = true;
+            }
+          }
+
+          if (shouldUpgradeImage || shouldUpgradeFile) {
+            updated[idx] = {
+              ...c,
+              fileType: d.fileType,
+              fileCategory: d.fileCategory || c.fileCategory,
+              fileName: d.fileName,
+              display: d.display,
+              title: d.title,
+              isDefaultName: false,
+              imageIndex: d.imageIndex,
+              totalImages: d.totalImages
+            };
+            hasChanges = true;
+          }
         }
       }
 
@@ -235,10 +411,9 @@ GemiBoost.Storage = {
         updated = this.normalizeItems(updated);
       }
 
-      const domSet = new Set(domItems.map((d) => `${d.type}:${d.rawText}:${d.subIndex ?? ''}`));
-      const finalItems = updated.map((c) => ({
+      const finalItems = updated.map((c, idx) => ({
         ...c,
-        isOffDOM: !domSet.has(`${c.type}:${c.rawText}:${c.subIndex ?? ''}`)
+        isOffDOM: !matchedCacheIndicesForDom.has(idx)
       }));
 
       return { items: this.normalizeItems(finalItems), hasChanges, updatedList: updated, isCorrupted: false };
