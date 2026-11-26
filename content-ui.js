@@ -70,6 +70,11 @@ const I18N_UI = {
 GemiBoost.UI = {
   _items: [],
   _scrollSpyBound: false,
+  _layoutSyncBound: false,
+  _layoutObserver: null,
+  _observedMainContainer: null,
+  _observedChatApp: null,
+  _layoutSyncRaf: null,
   _cancelAnimation: null,
   _isNavigating: false,
   _btnTimers: { sync: null, export: null, obsidian: null },
@@ -173,6 +178,7 @@ GemiBoost.UI = {
     container.appendChild(innerWrapper);
 
     mainContainer.appendChild(container);
+    this.bindLayoutSync();
     return container;
   },
 
@@ -300,11 +306,76 @@ GemiBoost.UI = {
     return toggleBtn;
   },
 
+  // Synchronize layout classes when Gemini switches between desktop and compact/mobile layouts
+  syncLayoutState: function () {
+    if (typeof document === 'undefined' || !document.body) return;
+
+    const mainContainer = document.querySelector(GemiBoost.Config.SELECTORS.MAIN_CONTAINER);
+    const topBarActions = document.querySelector('top-bar-actions');
+    const chatApp = document.querySelector('chat-app');
+
+    let isBelowTopBar = !!(
+      (chatApp && chatApp.classList.contains('mobile')) ||
+      (topBarActions && topBarActions.classList.contains('mobile'))
+    );
+
+    if (!isBelowTopBar && mainContainer && topBarActions) {
+      const mainRect = mainContainer.getBoundingClientRect();
+      const tbaRect = topBarActions.getBoundingClientRect();
+      if (mainRect.height > 0 && tbaRect.height > 0 && mainRect.top >= tbaRect.bottom - 2) {
+        isBelowTopBar = true;
+      }
+    }
+
+    document.body.classList.toggle('gemiboost-toc-below-topbar', isBelowTopBar);
+  },
+
+  // Bind resize and container observers so layout adapts cleanly when moving across screens
+  bindLayoutSync: function () {
+    const scheduleSync = () => {
+      if (this._layoutSyncRaf !== null) return;
+      this._layoutSyncRaf = requestAnimationFrame(() => {
+        this._layoutSyncRaf = null;
+        this.syncLayoutState();
+      });
+    };
+
+    if (!this._layoutSyncBound) {
+      this._layoutSyncBound = true;
+      window.addEventListener('resize', scheduleSync, { passive: true });
+    }
+
+    if (typeof ResizeObserver !== 'undefined') {
+      if (!this._layoutObserver) {
+        this._layoutObserver = new ResizeObserver(scheduleSync);
+      }
+      const mainContainer = document.querySelector(GemiBoost.Config.SELECTORS.MAIN_CONTAINER);
+      const chatApp = document.querySelector('chat-app');
+      if (mainContainer && mainContainer !== this._observedMainContainer) {
+        if (this._observedMainContainer) {
+          this._layoutObserver.unobserve(this._observedMainContainer);
+        }
+        this._layoutObserver.observe(mainContainer);
+        this._observedMainContainer = mainContainer;
+      }
+      if (chatApp && chatApp !== this._observedChatApp) {
+        if (this._observedChatApp) {
+          this._layoutObserver.unobserve(this._observedChatApp);
+        }
+        this._layoutObserver.observe(chatApp);
+        this._observedChatApp = chatApp;
+      }
+    }
+
+    this.syncLayoutState();
+  },
+
   // Toggle drawer open/close visibility
   setDrawerVisible: function (show) {
     const container = document.getElementById(GemiBoost.Config.DOM_IDS.CONTAINER);
     if (container) {
       if (show) {
+        this.bindLayoutSync();
         container.classList.add('panel-visible');
         document.body.classList.add('gemiboost-toc-open');
         this.setupScrollSpy();
