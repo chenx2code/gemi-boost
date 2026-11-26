@@ -368,6 +368,30 @@ GemiBoost.Exporter = {
     return this.sanitizeFilename(title);
   },
 
+  // Sanitize Obsidian folder path per segment while preserving nested slashes and spaces
+  sanitizeFolderPath: function (rawFolder) {
+    if (typeof rawFolder !== 'string') return '';
+    const normalized = rawFolder.replace(/\\/g, '/');
+    const segments = normalized
+      .split('/')
+      .map((seg) =>
+        seg
+          .replace(new RegExp('[:*?"<>|\\x00-\\x1f\\x7f]', 'g'), '_')
+          .replace(/^[\s.]+|[\s.]+$/g, '')
+      )
+      .filter((seg) => seg && seg !== '.' && seg !== '..');
+    return segments.join('/');
+  },
+
+  // Build obsidian:// URI with RFC 3986 %20 space encoding (avoids URLSearchParams '+' form encoding)
+  buildObsidianUri: function (action, paramEntries = []) {
+    const query = paramEntries
+      .filter((entry) => Array.isArray(entry) && entry.length === 2 && entry[1] !== undefined && entry[1] !== null && entry[1] !== '')
+      .map(([key, val]) => `${encodeURIComponent(String(key))}=${encodeURIComponent(String(val))}`)
+      .join('&');
+    return query ? `obsidian://${action}?${query}` : `obsidian://${action}`;
+  },
+
   // Trigger client-side file download via dynamic Blob URL
   triggerDownload: function (content, filename) {
     const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
@@ -439,27 +463,27 @@ GemiBoost.Exporter = {
       const rawTitle = options.title !== undefined && options.title.trim() ? options.title : conversationData.title;
       const cleanTitle = this.sanitizeFilename(rawTitle).replace(/\.md$/i, '');
       const rawFolder = options.folder !== undefined ? String(options.folder) : (typeof settings.obsidianFolder === 'string' ? settings.obsidianFolder : 'Gemini');
-      const folder = rawFolder.trim().replace(/^[\/\\\\]+|[\/\\\\]+$/g, '');
+      const folder = this.sanitizeFolderPath(rawFolder);
       const notePath = folder ? `${folder}/${cleanTitle}` : cleanTitle;
 
       // 5. Copy Markdown to clipboard (Official Obsidian 1.7.2+ clipboard-transit pattern)
       await this.writeToClipboard(markdown);
 
-      // 6. Build official Obsidian URI scheme parameters
-      // Using 'file' parameter ensures Obsidian resolves subfolder structures
-      const params = new URLSearchParams();
-      params.append('file', notePath);
-      params.append('clipboard', 'true');
+      // 6. Build official Obsidian URI scheme parameters with RFC 3986 encoding (%20 for spaces)
+      const paramEntries = [
+        ['file', notePath],
+        ['clipboard', 'true']
+      ];
 
       const targetVault = options.vault !== undefined ? options.vault : settings.obsidianVault;
       if (targetVault && targetVault.trim()) {
-        params.append('vault', targetVault.trim());
+        paramEntries.push(['vault', targetVault.trim()]);
       }
       if (settings.obsidianSilent !== false) {
-        params.append('silent', 'true');
+        paramEntries.push(['silent', 'true']);
       }
 
-      const obsidianUri = `obsidian://new?${params.toString()}`;
+      const obsidianUri = this.buildObsidianUri('new', paramEntries);
 
       // 7. Trigger native URI dispatch
       this.triggerObsidianUri(obsidianUri);
