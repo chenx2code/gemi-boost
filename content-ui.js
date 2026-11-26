@@ -72,8 +72,10 @@ GemiBoost.UI = {
   _scrollSpyBound: false,
   _layoutSyncBound: false,
   _layoutObserver: null,
+  _layoutMutationObserver: null,
   _observedMainContainer: null,
   _observedChatApp: null,
+  _observedMutationChatApp: null,
   _layoutSyncRaf: null,
   _cancelAnimation: null,
   _isNavigating: false,
@@ -306,31 +308,34 @@ GemiBoost.UI = {
     return toggleBtn;
   },
 
-  // Synchronize layout classes when Gemini switches between desktop and compact/mobile layouts
+  // Synchronize CSS top offset when Gemini switches between desktop and compact/mobile topbars
   syncLayoutState: function () {
     if (typeof document === 'undefined' || !document.body) return;
 
     const mainContainer = document.querySelector(GemiBoost.Config.SELECTORS.MAIN_CONTAINER);
-    const topBarActions = document.querySelector('top-bar-actions');
     const chatApp = document.querySelector('chat-app');
 
-    let isBelowTopBar = !!(
-      (chatApp && chatApp.classList.contains('mobile')) ||
-      (topBarActions && topBarActions.classList.contains('mobile'))
-    );
-
-    if (!isBelowTopBar && mainContainer && topBarActions) {
+    let topOffset = 0;
+    if (mainContainer) {
       const mainRect = mainContainer.getBoundingClientRect();
-      const tbaRect = topBarActions.getBoundingClientRect();
-      if (mainRect.height > 0 && tbaRect.height > 0 && mainRect.top >= tbaRect.bottom - 2) {
-        isBelowTopBar = true;
+      if (mainRect.height > 0) {
+        if (chatApp) {
+          const chatRect = chatApp.getBoundingClientRect();
+          topOffset = Math.max(0, mainRect.top - chatRect.top);
+        } else {
+          topOffset = Math.max(0, mainRect.top);
+        }
       }
     }
 
-    document.body.classList.toggle('gemiboost-toc-below-topbar', isBelowTopBar);
+    const normalizedOffset = Math.round(topOffset * 100) / 100;
+    const nextValue = `${normalizedOffset}px`;
+    if (document.body.style.getPropertyValue('--gb-toc-top-offset') !== nextValue) {
+      document.body.style.setProperty('--gb-toc-top-offset', nextValue);
+    }
   },
 
-  // Bind resize and container observers so layout adapts cleanly when moving across screens
+  // Bind resize, size, and class/style observers so layout adapts across viewports
   bindLayoutSync: function () {
     const scheduleSync = () => {
       if (this._layoutSyncRaf !== null) return;
@@ -345,12 +350,13 @@ GemiBoost.UI = {
       window.addEventListener('resize', scheduleSync, { passive: true });
     }
 
+    const mainContainer = document.querySelector(GemiBoost.Config.SELECTORS.MAIN_CONTAINER);
+    const chatApp = document.querySelector('chat-app');
+
     if (typeof ResizeObserver !== 'undefined') {
       if (!this._layoutObserver) {
         this._layoutObserver = new ResizeObserver(scheduleSync);
       }
-      const mainContainer = document.querySelector(GemiBoost.Config.SELECTORS.MAIN_CONTAINER);
-      const chatApp = document.querySelector('chat-app');
       if (mainContainer && mainContainer !== this._observedMainContainer) {
         if (this._observedMainContainer) {
           this._layoutObserver.unobserve(this._observedMainContainer);
@@ -364,6 +370,20 @@ GemiBoost.UI = {
         }
         this._layoutObserver.observe(chatApp);
         this._observedChatApp = chatApp;
+      }
+    }
+
+    if (typeof MutationObserver !== 'undefined') {
+      if (!this._layoutMutationObserver) {
+        this._layoutMutationObserver = new MutationObserver(scheduleSync);
+      }
+      if (chatApp && chatApp !== this._observedMutationChatApp) {
+        this._layoutMutationObserver.disconnect();
+        this._layoutMutationObserver.observe(chatApp, {
+          attributes: true,
+          attributeFilter: ['class', 'style']
+        });
+        this._observedMutationChatApp = chatApp;
       }
     }
 

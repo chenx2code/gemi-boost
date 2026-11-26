@@ -150,28 +150,22 @@ body[data-theme="dark"],
 #gemiboost-toc-container {
   position: relative;
   width: 0;
-  height: 100%;
+  height: calc(100% + var(--gb-toc-top-offset, 0px));
   max-height: 100dvh;
+  margin-top: calc(-1 * var(--gb-toc-top-offset, 0px));
   align-self: stretch;
   flex-shrink: 0;
   box-sizing: border-box;
   background-color: var(--gb-container-bg);
   overflow: hidden;
-  transition: width 0.3s cubic-bezier(0.2, 0, 0, 1), border-left 0.3s cubic-bezier(0.2, 0, 0, 1), border-top 0.3s cubic-bezier(0.2, 0, 0, 1);
-  z-index: 10;
+  transition: width 0.3s cubic-bezier(0.2, 0, 0, 1), border-left 0.3s cubic-bezier(0.2, 0, 0, 1);
+  z-index: 50;
   border-left: 0px solid transparent;
-  border-top: 0px solid transparent;
 }
 
 #gemiboost-toc-container.panel-visible {
   width: 288px;
   border-left: 1px solid var(--gb-border);
-}
-
-/* Frame the top edge when docked below Gemini's mobile/compact top header bar */
-body.gemiboost-toc-below-topbar #gemiboost-toc-container.panel-visible,
-body:has(chat-app.mobile) #gemiboost-toc-container.panel-visible {
-  border-top: 1px solid var(--gb-border);
 }
 
 /* Inner wrapper */
@@ -636,8 +630,8 @@ body top-bar-actions {
   transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1) !important;
 }
 
-/* Only shift top-bar-actions when the TOC drawer shares the top viewport band (desktop layout) */
-body.gemiboost-toc-open:not(.gemiboost-toc-below-topbar):not(:has(chat-app.mobile)) top-bar-actions:not(.mobile) {
+/* Shift top-bar-actions left in push mode so it stays clear of the full-height TOC drawer */
+body.gemiboost-toc-open top-bar-actions {
   transform: translateX(-288px) !important;
 }
 
@@ -649,12 +643,14 @@ body.gemiboost-toc-open #gemiboost-toc-toggle {
 /* Overlay mode on narrow viewports so the chat column is not crushed */
 @media (max-width: 640px) {
   #gemiboost-toc-container {
-    position: absolute;
+    position: fixed;
     inset-block: 0;
     inset-inline-end: 0;
-    height: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    margin-top: 0;
     z-index: 200;
-    transition: width 0.3s cubic-bezier(0.2, 0, 0, 1), border-left 0.3s cubic-bezier(0.2, 0, 0, 1), border-top 0.3s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.3s cubic-bezier(0.2, 0, 0, 1);
+    transition: width 0.3s cubic-bezier(0.2, 0, 0, 1), border-left 0.3s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.3s cubic-bezier(0.2, 0, 0, 1);
   }
 
   #gemiboost-toc-container.panel-visible {
@@ -662,7 +658,15 @@ body.gemiboost-toc-open #gemiboost-toc-toggle {
     box-shadow: -8px 0 24px rgba(0, 0, 0, 0.14);
   }
 
-  body.gemiboost-toc-open:not(.gemiboost-toc-below-topbar):not(:has(chat-app.mobile)) top-bar-actions:not(.mobile) {
+  body.dark-theme #gemiboost-toc-container.panel-visible,
+  html.dark-theme #gemiboost-toc-container.panel-visible,
+  html[data-theme="dark"] #gemiboost-toc-container.panel-visible,
+  body[data-theme="dark"] #gemiboost-toc-container.panel-visible,
+  [data-theme="dark"] #gemiboost-toc-container.panel-visible {
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.38);
+  }
+
+  body.gemiboost-toc-open top-bar-actions {
     transform: none !important;
   }
 }
