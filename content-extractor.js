@@ -111,12 +111,27 @@ GemiBoost.Extractor = {
     return normalized ? (this.imageFilenameMap.get(normalized) || '') : '';
   },
 
+  rpcActivity: { inFlightCount: 0, lastPhase: 'idle', lastUpdatedAt: 0 },
+  _rpcActivityListeners: new Set(),
+
+  // Return latest batchexecute RPC activity snapshot from MAIN world
+  getRpcActivity: function () {
+    return this.rpcActivity;
+  },
+
+  // Subscribe to MAIN-world RPC activity changes (returns unsubscribe handler)
+  onRpcActivityChange: function (listener) {
+    if (typeof listener !== 'function') return () => {};
+    this._rpcActivityListeners.add(listener);
+    return () => this._rpcActivityListeners.delete(listener);
+  },
+
   // Register callback notified when asynchronous RPC interception yields new image filenames
   setOnImageFilenamesUpdated: function (callback) {
     this._onImageFilenamesUpdated = typeof callback === 'function' ? callback : null;
   },
 
-  // Bind postMessage bridge with the MAIN world RPC interceptor and request any buffered entries
+  // Bind postMessage bridge with the MAIN world RPC interceptor and request buffered state
   initImageFilenameBridge: function () {
     if (this._interceptorBridgeBound || typeof window === 'undefined' || !window.addEventListener) return;
     this._interceptorBridgeBound = true;
@@ -124,7 +139,23 @@ GemiBoost.Extractor = {
     window.addEventListener('message', (event) => {
       if (event.source !== window || event.origin !== window.location.origin) return;
       const data = event.data;
-      if (!data || data.source !== 'gemiboost-main' || data.type !== 'IMAGE_FILENAMES') return;
+      if (!data || data.source !== 'gemiboost-main') return;
+
+      if (data.type === 'RPC_ACTIVITY') {
+        this.rpcActivity = {
+          inFlightCount: Math.max(0, Number(data.inFlightCount) || 0),
+          lastPhase: data.phase || 'idle',
+          lastUpdatedAt: Number(data.timestamp) || Date.now()
+        };
+        this._rpcActivityListeners.forEach((fn) => {
+          try {
+            fn(this.rpcActivity);
+          } catch (e) {}
+        });
+        return;
+      }
+
+      if (data.type !== 'IMAGE_FILENAMES') return;
       if (!Array.isArray(data.entries) || data.entries.length === 0) return;
 
       const hasUpdates = this.registerImageFilenames(data.entries);
@@ -138,6 +169,13 @@ GemiBoost.Extractor = {
         {
           source: 'gemiboost-isolated',
           type: 'REQUEST_IMAGE_FILENAMES'
+        },
+        window.location.origin
+      );
+      window.postMessage(
+        {
+          source: 'gemiboost-isolated',
+          type: 'REQUEST_RPC_ACTIVITY'
         },
         window.location.origin
       );

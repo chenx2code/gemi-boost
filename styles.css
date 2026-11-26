@@ -293,7 +293,12 @@ body[data-theme="dark"],
 }
 
 /* Button States: Syncing / Loading */
-.gemiboost-toc-sync-btn.is-syncing,
+.gemiboost-toc-sync-btn.is-syncing {
+  color: var(--gb-primary);
+  background-color: var(--gb-primary-container);
+  cursor: pointer;
+}
+
 .gemiboost-toc-export-btn.is-loading,
 .gemiboost-toc-obsidian-btn.is-loading {
   color: var(--gb-primary);
@@ -330,7 +335,7 @@ body[data-theme="dark"],
 .gemiboost-toc-obsidian-btn.is-success {
   color: var(--gb-success-color);
   background-color: var(--gb-success-bg);
-  cursor: default;
+  cursor: pointer;
 }
 
 .gemiboost-toc-sync-btn.is-synced svg,
