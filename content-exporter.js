@@ -21,21 +21,20 @@ GemiBoost.Exporter = {
       return;
     }
 
-    if (GemiBoost.Sync && GemiBoost.Sync.isCurrentlySyncing()) {
-      if (GemiBoost.UI) {
-        GemiBoost.UI.setExportButtonState('syncing', '正在同步历史记录中，请稍候...');
-      }
-      return;
-    }
-
     this.isExporting = true;
     if (GemiBoost.UI) {
       GemiBoost.UI.setExportButtonState('exporting', '正在准备导出全量对话...');
     }
 
     try {
-      // 1. Ensure conversation is fully loaded from top to bottom
-      await this.ensureFullHistoryLoaded('markdown');
+      // 1. Ensure conversation is fully loaded from top to bottom (or wait seamlessly if sync active)
+      const isReady = await this.ensureFullHistoryLoaded('markdown');
+      if (!isReady) {
+        if (GemiBoost.UI) {
+          GemiBoost.UI.setExportButtonState('idle');
+        }
+        return;
+      }
 
       if (GemiBoost.UI) {
         GemiBoost.UI.setExportButtonState('exporting', '正在组装对话内容...');
@@ -63,9 +62,13 @@ GemiBoost.Exporter = {
 
       if (GemiBoost.UI) {
         GemiBoost.UI.setExportButtonState('success', `已导出 ${conversationData.turns.length} 轮对话至 ${filename}`);
-        setTimeout(() => {
-          GemiBoost.UI.setExportButtonState('idle');
-        }, GemiBoost.Config.TIMING.EXPORT_FEEDBACK_MS || 1500);
+        if (GemiBoost.UI.scheduleButtonReset) {
+          GemiBoost.UI.scheduleButtonReset('export', GemiBoost.Config.TIMING.EXPORT_FEEDBACK_MS || 1200);
+        } else {
+          setTimeout(() => {
+            GemiBoost.UI.setExportButtonState('idle');
+          }, GemiBoost.Config.TIMING.EXPORT_FEEDBACK_MS || 1200);
+        }
       }
     } catch (err) {
       console.error('[GemiBoost] Error during Markdown export:', err);
@@ -77,53 +80,76 @@ GemiBoost.Exporter = {
     }
   },
 
-  // Check and trigger sync if older turns might not be loaded into DOM
+  // Check and trigger sync if older turns might not be loaded into DOM (returns Promise<boolean>)
   ensureFullHistoryLoaded: function (target = 'markdown') {
     return new Promise((resolve) => {
       const scroller = GemiBoost.Utils.getChatScrollContainer();
       if (!scroller) {
-        return resolve();
+        return resolve(true);
       }
 
-      // If the chat content has no scroll overflow, all messages are already in DOM
-      if (scroller.scrollHeight <= scroller.clientHeight + 50) {
-        return resolve();
+      // Helper to update only the triggering button's state to prevent cross-contamination
+      const updateSyncUI = (count) => {
+        if (!GemiBoost.UI) return;
+        const msg = count ? `正在加载历史记录 (已加载 ${count} 条)...` : '正在同步更早的历史记录...';
+        if (target === 'obsidian') {
+          if (GemiBoost.UI.setObsidianButtonState) {
+            GemiBoost.UI.setObsidianButtonState('syncing', msg);
+          }
+        } else {
+          if (GemiBoost.UI.setExportButtonState) {
+            GemiBoost.UI.setExportButtonState('syncing', msg);
+          }
+        }
+      };
+
+      // If another sync is already in progress, wait for it seamlessly rather than getting stuck
+      if (GemiBoost.Sync && GemiBoost.Sync.isCurrentlySyncing()) {
+        updateSyncUI();
+        GemiBoost.Sync.waitForActiveSync().then((outcome) => {
+          resolve(!(outcome && outcome.status === 'aborted'));
+        });
+        return;
       }
 
-      // If already at scrollTop 0 and has been synced, proceed directly
-      // Otherwise, trigger GemiBoost.Sync to scroll up and hydrate full history
       const chatId = GemiBoost.Utils.getChatId();
-      GemiBoost.Storage.loadChatCache(chatId, (cached) => {
-        const domCount = document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY).length;
-        const cachedCount = cached?.items?.length || 0;
+      const markChatSynced = () => {
+        if (!chatId || !GemiBoost.Extractor || !GemiBoost.Storage) return;
+        const domItems = GemiBoost.Extractor.extractFromDOM();
+        if (domItems && domItems.length > 0) {
+          GemiBoost.Storage.saveChatCache(chatId, domItems, true);
+          if (GemiBoost.App) {
+            GemiBoost.App.cachedChatData = {
+              version: GemiBoost.Config ? GemiBoost.Config.CACHE_VERSION : 4,
+              isFullySynced: true,
+              items: domItems
+            };
+          }
+        }
+      };
 
-        // If the cache was fully synced AND the live DOM actually contains all those turns,
-        // we are already at the complete state and can proceed directly.
-        if (cached && cached.isFullySynced && cachedCount > 0 && domCount >= cachedCount) {
-          return resolve();
+      const checkWithCache = (cached) => {
+        if (GemiBoost.Sync && GemiBoost.Sync.checkAlreadySynced) {
+          const check = GemiBoost.Sync.checkAlreadySynced(cached);
+          if (check.canSkip) {
+            if (check.markSynced && (!cached || !cached.isFullySynced)) {
+              markChatSynced();
+            }
+            return resolve(true);
+          }
+        } else if (scroller.scrollHeight <= scroller.clientHeight + 50) {
+          return resolve(true);
         }
 
-        // Helper to update only the triggering button's state to prevent cross-contamination
-        const updateSyncUI = (count) => {
-          if (!GemiBoost.UI) return;
-          const msg = count ? `正在加载历史记录 (已加载 ${count} 条)...` : '正在同步更早的历史记录...';
-          if (target === 'obsidian') {
-            if (GemiBoost.UI.setObsidianButtonState) {
-              GemiBoost.UI.setObsidianButtonState('syncing', msg);
-            }
-          } else {
-            if (GemiBoost.UI.setExportButtonState) {
-              GemiBoost.UI.setExportButtonState('syncing', msg);
-            }
-          }
-        };
+        const scrollAnchor = GemiBoost.Utils && GemiBoost.Utils.captureScrollAnchor
+          ? GemiBoost.Utils.captureScrollAnchor(scroller)
+          : { scrollTop: scroller.scrollTop || 0, anchorEl: null, offsetFromTop: 0 };
 
-        // Otherwise (fresh page load or partially loaded), run the full sync loop
-        // which scrolls up to the very first prompt.
         updateSyncUI();
 
         GemiBoost.Sync.triggerSync({
           silentUI: true,
+          restoreScrollAnchor: scrollAnchor,
           onBatchLoaded: (count) => {
             updateSyncUI(count);
           },
@@ -138,13 +164,21 @@ GemiBoost.Exporter = {
                 };
               }
             }
-            resolve();
+            resolve(true);
           },
           onAborted: () => {
-            resolve();
+            resolve(false);
           }
         });
-      });
+      };
+
+      if (GemiBoost.Storage && GemiBoost.Storage.loadChatCache && chatId) {
+        GemiBoost.Storage.loadChatCache(chatId, (cached) => {
+          checkWithCache(cached || GemiBoost.App?.cachedChatData || null);
+        });
+      } else {
+        checkWithCache(GemiBoost.App?.cachedChatData || null);
+      }
     });
   },
 
@@ -397,13 +431,6 @@ GemiBoost.Exporter = {
       return;
     }
 
-    if (GemiBoost.Sync && GemiBoost.Sync.isCurrentlySyncing()) {
-      if (GemiBoost.UI && GemiBoost.UI.setObsidianButtonState) {
-        GemiBoost.UI.setObsidianButtonState('syncing', '正在同步历史记录中，请稍候...');
-      }
-      return;
-    }
-
     this.isExporting = true;
     const uiStrings = GemiBoost.UI && GemiBoost.UI.getStrings ? GemiBoost.UI.getStrings() : null;
     const loadingMsg = uiStrings ? uiStrings.obsidianLoading : '正在准备导出至 Obsidian...';
@@ -412,8 +439,14 @@ GemiBoost.Exporter = {
     }
 
     try {
-      // 1. Ensure conversation is fully loaded from top to bottom
-      await this.ensureFullHistoryLoaded('obsidian');
+      // 1. Ensure conversation is fully loaded from top to bottom (or wait seamlessly if sync active)
+      const isReady = await this.ensureFullHistoryLoaded('obsidian');
+      if (!isReady) {
+        if (GemiBoost.UI && GemiBoost.UI.setObsidianButtonState) {
+          GemiBoost.UI.setObsidianButtonState('idle');
+        }
+        return;
+      }
 
       if (GemiBoost.UI && GemiBoost.UI.setObsidianButtonState) {
         GemiBoost.UI.setObsidianButtonState('loading', loadingMsg);
@@ -467,9 +500,13 @@ GemiBoost.Exporter = {
       if (GemiBoost.UI && GemiBoost.UI.setObsidianButtonState) {
         const successPrefix = uiStrings ? uiStrings.obsidianSuccess.replace(/[！!]$/, '') : '已导出至 Obsidian';
         GemiBoost.UI.setObsidianButtonState('success', `${successPrefix} (${notePath})`);
-        setTimeout(() => {
-          GemiBoost.UI.setObsidianButtonState('idle');
-        }, GemiBoost.Config.TIMING.EXPORT_FEEDBACK_MS || 1500);
+        if (GemiBoost.UI.scheduleButtonReset) {
+          GemiBoost.UI.scheduleButtonReset('obsidian', GemiBoost.Config.TIMING.EXPORT_FEEDBACK_MS || 1200);
+        } else {
+          setTimeout(() => {
+            GemiBoost.UI.setObsidianButtonState('idle');
+          }, GemiBoost.Config.TIMING.EXPORT_FEEDBACK_MS || 1200);
+        }
       }
     } catch (err) {
       console.error('[GemiBoost] Error during Obsidian export:', err);

@@ -151,25 +151,92 @@ GemiBoost.App = {
     });
   },
 
-  // Trigger or cancel full history sync
+  // Trigger or cancel full history sync (with instant fast-path when DOM is already complete)
   handleSync: function () {
-    // Invalidate memory signatures to force full re-render on completion
-    this.cachedChatData = null;
-    this.lastSignature = '';
-    this.lastQueryCount = 0;
+    if (GemiBoost.Sync && GemiBoost.Sync.isCurrentlySyncing()) {
+      GemiBoost.Sync.abortSync();
+      this.updateCatalog();
+      return;
+    }
 
-    GemiBoost.Sync.triggerSync({
-      onBatchLoaded: () => {
-        this.updateCatalog();
-      },
-      onComplete: (fullItems) => {
-        this.cachedChatData = { items: fullItems, isFullySynced: true, updatedAt: Date.now() };
-        this.updateCatalog();
-      },
-      onAborted: () => {
-        this.updateCatalog();
+    const startFullSync = () => {
+      this.cachedChatData = null;
+      this.lastSignature = '';
+      this.lastQueryCount = 0;
+
+      GemiBoost.Sync.triggerSync({
+        onBatchLoaded: () => {
+          this.updateCatalog();
+        },
+        onComplete: (fullItems) => {
+          const chatId = GemiBoost.Utils.getChatId();
+          if (chatId && fullItems && fullItems.length > 0 && GemiBoost.Storage) {
+            GemiBoost.Storage.saveChatCache(chatId, fullItems, true);
+          }
+          this.cachedChatData = {
+            version: GemiBoost.Config ? GemiBoost.Config.CACHE_VERSION : 4,
+            items: fullItems,
+            isFullySynced: true,
+            updatedAt: Date.now()
+          };
+          this.updateCatalog();
+        },
+        onAborted: () => {
+          this.updateCatalog();
+        }
+      });
+    };
+
+    const evaluateSync = (cachedData) => {
+      if (GemiBoost.Sync && GemiBoost.Sync.checkAlreadySynced) {
+        const check = GemiBoost.Sync.checkAlreadySynced(cachedData);
+        if (check.canSkip) {
+          this.lastSignature = '';
+          this.lastQueryCount = 0;
+          this.updateCatalog();
+
+          const domItems = GemiBoost.Extractor ? GemiBoost.Extractor.extractFromDOM() : [];
+          const chatId = GemiBoost.Utils.getChatId();
+          const finalTurnCount = domItems.filter((it) => it.isTurnRoot !== false).length;
+
+          if (check.markSynced && chatId && domItems.length > 0) {
+            this.cachedChatData = {
+              version: GemiBoost.Config ? GemiBoost.Config.CACHE_VERSION : 4,
+              items: domItems,
+              isFullySynced: true,
+              updatedAt: Date.now()
+            };
+            if (GemiBoost.Storage) {
+              GemiBoost.Storage.saveChatCache(chatId, domItems, true);
+            }
+          }
+
+          if (GemiBoost.UI && GemiBoost.UI.setSyncButtonState) {
+            GemiBoost.UI.setSyncButtonState('synced', `已完整同步全部 ${finalTurnCount} 条历史提问`);
+            if (GemiBoost.UI.scheduleButtonReset) {
+              GemiBoost.UI.scheduleButtonReset('sync', GemiBoost.Config.TIMING.SYNC_ICON_FEEDBACK_MS);
+            }
+          }
+          return;
+        }
       }
-    });
+      startFullSync();
+    };
+
+    if (this.cachedChatData) {
+      evaluateSync(this.cachedChatData);
+      return;
+    }
+
+    const chatId = GemiBoost.Utils.getChatId();
+    if (chatId && GemiBoost.Storage && GemiBoost.Storage.loadChatCache) {
+      GemiBoost.Storage.loadChatCache(chatId, (cached) => {
+        if (GemiBoost.Utils.getChatId() !== chatId) return;
+        evaluateSync(cached || null);
+      });
+    } else {
+      evaluateSync(null);
+    }
   },
 
   // Open or close TOC sidebar

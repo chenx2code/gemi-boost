@@ -72,6 +72,7 @@ GemiBoost.UI = {
   _scrollSpyBound: false,
   _cancelAnimation: null,
   _isNavigating: false,
+  _btnTimers: { sync: null, export: null, obsidian: null },
 
   // Get current active language strings
   getStrings: function () {
@@ -380,157 +381,178 @@ GemiBoost.UI = {
     });
   },
 
+  // Schedule auto-reset back to idle while cancelling any stale cooldown timer on the same button
+  scheduleButtonReset: function (btnKey, delayMs) {
+    if (!this._btnTimers) {
+      this._btnTimers = { sync: null, export: null, obsidian: null };
+    }
+    if (this._btnTimers[btnKey]) {
+      clearTimeout(this._btnTimers[btnKey]);
+      this._btnTimers[btnKey] = null;
+    }
+    const setters = {
+      sync: () => this.setSyncButtonState('idle'),
+      export: () => this.setExportButtonState('idle'),
+      obsidian: () => this.setObsidianButtonState('idle')
+    };
+    const setter = setters[btnKey];
+    if (!setter) return;
+    this._btnTimers[btnKey] = setTimeout(() => {
+      this._btnTimers[btnKey] = null;
+      setter();
+    }, delayMs);
+  },
+
+  // Shared button state updater preserving CSS spin animation across loading/syncing sub-states
+  _applyActionButtonState: function (cfg, state, tooltip) {
+    const btn = document.getElementById(cfg.btnId);
+    if (!btn) return;
+
+    if (this._btnTimers && this._btnTimers[cfg.key]) {
+      clearTimeout(this._btnTimers[cfg.key]);
+      this._btnTimers[cfg.key] = null;
+    }
+
+    const getVisualGroup = (s) => {
+      if (cfg.spinStates.includes(s)) return 'spin';
+      if (s === cfg.successState) return 'success';
+      return 'idle';
+    };
+
+    const prevState = btn.dataset.state || (
+      btn.classList.contains(cfg.spinClass) ? cfg.spinStates[0] :
+      btn.classList.contains(cfg.successClass) ? cfg.successState : 'idle'
+    );
+    const nextGroup = getVisualGroup(state);
+    const prevGroup = getVisualGroup(prevState);
+
+    btn.dataset.state = state;
+
+    if (prevGroup !== nextGroup) {
+      if (nextGroup === 'spin') {
+        btn.classList.remove(cfg.successClass);
+        btn.classList.add(cfg.spinClass);
+        btn.innerHTML = cfg.spinHtml;
+      } else if (nextGroup === 'success') {
+        btn.classList.remove(cfg.spinClass);
+        btn.classList.add(cfg.successClass);
+        btn.innerHTML = cfg.successHtml;
+      } else {
+        btn.classList.remove(cfg.spinClass, cfg.successClass);
+        btn.innerHTML = cfg.idleHtml;
+      }
+    }
+
+    const finalTooltip = tooltip || cfg.defaultTooltip(state);
+    btn.setAttribute('title', finalTooltip);
+    btn.setAttribute('aria-label', finalTooltip);
+  },
+
   // Update sync button icon and state without disrupting ongoing CSS animations
   setSyncButtonState: function (state, tooltip) {
-    const syncBtn = document.getElementById(GemiBoost.Config.DOM_IDS.SYNC_BTN);
-    if (!syncBtn) return;
-
     const strings = this.getStrings();
-    const prevState = syncBtn.dataset.state || (
-      syncBtn.classList.contains('is-syncing') ? 'syncing' :
-      syncBtn.classList.contains('is-synced') ? 'synced' : 'idle'
-    );
-    const isStateChanged = prevState !== state;
-
-    if (isStateChanged) {
-      syncBtn.dataset.state = state;
-      if (state === 'syncing') {
-        syncBtn.classList.remove('is-synced');
-        syncBtn.classList.add('is-syncing');
-        syncBtn.innerHTML = `
+    this._applyActionButtonState(
+      {
+        key: 'sync',
+        btnId: GemiBoost.Config.DOM_IDS.SYNC_BTN,
+        spinStates: ['syncing'],
+        successState: 'synced',
+        spinClass: 'is-syncing',
+        successClass: 'is-synced',
+        spinHtml: `
           <span class="gemiboost-spinner-composited">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
               <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
             </svg>
           </span>
-        `;
-      } else if (state === 'synced') {
-        syncBtn.classList.remove('is-syncing');
-        syncBtn.classList.add('is-synced');
-        syncBtn.innerHTML = `
+        `,
+        successHtml: `
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
             <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
           </svg>
-        `;
-      } else {
-        syncBtn.classList.remove('is-syncing', 'is-synced');
-        syncBtn.innerHTML = `
+        `,
+        idleHtml: `
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
             <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
           </svg>
-        `;
-      }
-    }
-
-    const defaultTooltip = state === 'syncing'
-      ? strings.syncLoading
-      : state === 'synced'
-      ? strings.syncSuccess
-      : strings.syncIdle;
-
-    const finalTooltip = tooltip || defaultTooltip;
-    syncBtn.setAttribute('title', finalTooltip);
-    syncBtn.setAttribute('aria-label', finalTooltip);
+        `,
+        defaultTooltip: (s) => (s === 'syncing' ? strings.syncLoading : s === 'synced' ? strings.syncSuccess : strings.syncIdle)
+      },
+      state,
+      tooltip
+    );
   },
 
-  // Update export button state in top header
+  // Update export button state in top header without resetting spinner on syncing -> exporting
   setExportButtonState: function (state, tooltip) {
-    const exportBtn = document.getElementById(GemiBoost.Config.DOM_IDS.EXPORT_BTN);
-    if (!exportBtn) return;
-
     const strings = this.getStrings();
-    const defaultTooltip =
-      state === 'syncing'
-        ? strings.exportSyncing
-        : state === 'exporting'
-        ? strings.exportLoading
-        : state === 'success'
-        ? strings.exportSuccess
-        : strings.exportIdle;
-
-    const finalTooltip = tooltip || defaultTooltip;
-    exportBtn.dataset.state = state;
-
-    if (state === 'syncing' || state === 'exporting') {
-      exportBtn.classList.remove('is-success');
-      exportBtn.classList.add('is-loading');
-      exportBtn.innerHTML = `
-        <span class="gemiboost-spinner-composited">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-            <circle cx="12" cy="12" r="9" stroke-dasharray="40 18" />
+    this._applyActionButtonState(
+      {
+        key: 'export',
+        btnId: GemiBoost.Config.DOM_IDS.EXPORT_BTN,
+        spinStates: ['syncing', 'exporting'],
+        successState: 'success',
+        spinClass: 'is-loading',
+        successClass: 'is-success',
+        spinHtml: `
+          <span class="gemiboost-spinner-composited">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <circle cx="12" cy="12" r="9" stroke-dasharray="40 18" />
+            </svg>
+          </span>
+        `,
+        successHtml: `
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
           </svg>
-        </span>
-      `;
-    } else if (state === 'success') {
-      exportBtn.classList.remove('is-loading');
-      exportBtn.classList.add('is-success');
-      exportBtn.innerHTML = `
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-          <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-        </svg>
-      `;
-    } else {
-      exportBtn.classList.remove('is-loading', 'is-success');
-      exportBtn.innerHTML = `
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-          <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
-        </svg>
-      `;
-    }
-
-    exportBtn.setAttribute('title', finalTooltip);
-    exportBtn.setAttribute('aria-label', finalTooltip);
+        `,
+        idleHtml: `
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+          </svg>
+        `,
+        defaultTooltip: (s) => (s === 'syncing' ? strings.exportSyncing : s === 'exporting' ? strings.exportLoading : s === 'success' ? strings.exportSuccess : strings.exportIdle)
+      },
+      state,
+      tooltip
+    );
   },
 
-  // Update Obsidian export button state in top header
+  // Update Obsidian export button state in top header without resetting spinner on syncing -> loading
   setObsidianButtonState: function (state, tooltip) {
-    const obsidianBtn = document.getElementById(GemiBoost.Config.DOM_IDS.OBSIDIAN_BTN);
-    if (!obsidianBtn) return;
-
     const strings = this.getStrings();
-    const defaultTooltip =
-      state === 'syncing'
-        ? strings.obsidianSyncing
-        : state === 'loading'
-        ? strings.obsidianLoading
-        : state === 'success'
-        ? strings.obsidianSuccess
-        : strings.obsidianIdle;
-
-    const finalTooltip = tooltip || defaultTooltip;
-    obsidianBtn.dataset.state = state;
-
-    if (state === 'syncing' || state === 'loading') {
-      obsidianBtn.classList.remove('is-success');
-      obsidianBtn.classList.add('is-loading');
-      obsidianBtn.innerHTML = `
-        <span class="gemiboost-spinner-composited">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-            <circle cx="12" cy="12" r="9" stroke-dasharray="40 18" />
+    this._applyActionButtonState(
+      {
+        key: 'obsidian',
+        btnId: GemiBoost.Config.DOM_IDS.OBSIDIAN_BTN,
+        spinStates: ['syncing', 'loading'],
+        successState: 'success',
+        spinClass: 'is-loading',
+        successClass: 'is-success',
+        spinHtml: `
+          <span class="gemiboost-spinner-composited">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <circle cx="12" cy="12" r="9" stroke-dasharray="40 18" />
+            </svg>
+          </span>
+        `,
+        successHtml: `
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
           </svg>
-        </span>
-      `;
-    } else if (state === 'success') {
-      obsidianBtn.classList.remove('is-loading');
-      obsidianBtn.classList.add('is-success');
-      obsidianBtn.innerHTML = `
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-          <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-        </svg>
-      `;
-    } else {
-      obsidianBtn.classList.remove('is-loading', 'is-success');
-      obsidianBtn.innerHTML = `
-        <svg viewBox="0 0 24 24" width="13.5" height="13.5" fill="currentColor">
-          <path d="M9.643 14.012c.615-.183 1.605-.465 2.745-.534-.684-1.725-.849-3.235-.716-4.579.153-1.552.7-2.847 1.234-3.95.114-.235.223-.454.328-.664.149-.297.289-.577.42-.86.217-.47.378-.885.46-1.27.08-.38.08-.719-.014-1.044-.095-.325-.297-.675-.681-1.06a1.6 1.6 0 00-1.475.36l-4.95 4.453a1.602 1.602 0 00-.512.952l-.427 2.83c.67.592 2.327 2.317 3.335 4.71.09.213.174.432.253.656zM5.855 9.937c-.024.1-.057.197-.099.29L3.14 16.058a1.602 1.602 0 00.313 1.772l4.117 4.24c2.102-3.102 1.795-6.02.835-8.3-.728-1.73-1.832-3.083-2.55-3.833z"/>
-          <path d="M8.52 22.57c.073.01.146.018.22.02.781.023 2.095.091 3.16.288.87.16 2.593.642 4.011 1.056 1.082.316 2.197-.548 2.354-1.664.115-.814.33-1.735.725-2.58l-.009.004c-.67-1.87-1.523-3.077-2.417-3.847a5.294 5.294 0 00-2.777-1.258c-1.541-.216-2.952.189-3.841.45.532 2.218.368 4.828-1.425 7.53z"/>
-          <path d="M19.676 18.538a69.072 69.072 0 001.858-2.952.811.811 0 00-.061-.901c-.516-.684-1.504-2.075-2.042-3.362-.554-1.323-.636-3.378-.64-4.378a1.708 1.708 0 00-.359-1.051L15.235 1.83a3.757 3.757 0 01-.076.545c-.107.503-.307 1.004-.536 1.498-.135.29-.29.601-.446.915-.105.21-.21.42-.31.626-.517 1.068-.998 2.227-1.132 3.59-.125 1.262.046 2.73.814 4.484.128.01.257.025.386.043a6.364 6.364 0 013.327 1.506c.916.79 1.743 1.921 2.414 3.5z"/>
-        </svg>
-      `;
-    }
-
-    obsidianBtn.setAttribute('title', finalTooltip);
-    obsidianBtn.setAttribute('aria-label', finalTooltip);
+        `,
+        idleHtml: `
+          <svg viewBox="0 0 24 24" width="13.5" height="13.5" fill="currentColor">
+            <path d="M9.643 14.012c.615-.183 1.605-.465 2.745-.534-.684-1.725-.849-3.235-.716-4.579.153-1.552.7-2.847 1.234-3.95.114-.235.223-.454.328-.664.149-.297.289-.577.42-.86.217-.47.378-.885.46-1.27.08-.38.08-.719-.014-1.044-.095-.325-.297-.675-.681-1.06a1.6 1.6 0 00-1.475.36l-4.95 4.453a1.602 1.602 0 00-.512.952l-.427 2.83c.67.592 2.327 2.317 3.335 4.71.09.213.174.432.253.656zM5.855 9.937c-.024.1-.057.197-.099.29L3.14 16.058a1.602 1.602 0 00.313 1.772l4.117 4.24c2.102-3.102 1.795-6.02.835-8.3-.728-1.73-1.832-3.083-2.55-3.833z"/>
+            <path d="M8.52 22.57c.073.01.146.018.22.02.781.023 2.095.091 3.16.288.87.16 2.593.642 4.011 1.056 1.082.316 2.197-.548 2.354-1.664.115-.814.33-1.735.725-2.58l-.009.004c-.67-1.87-1.523-3.077-2.417-3.847a5.294 5.294 0 00-2.777-1.258c-1.541-.216-2.952.189-3.841.45.532 2.218.368 4.828-1.425 7.53z"/>
+            <path d="M19.676 18.538a69.072 69.072 0 001.858-2.952.811.811 0 00-.061-.901c-.516-.684-1.504-2.075-2.042-3.362-.554-1.323-.636-3.378-.64-4.378a1.708 1.708 0 00-.359-1.051L15.235 1.83a3.757 3.757 0 01-.076.545c-.107.503-.307 1.004-.536 1.498-.135.29-.29.601-.446.915-.105.21-.21.42-.31.626-.517 1.068-.998 2.227-1.132 3.59-.125 1.262.046 2.73.814 4.484.128.01.257.025.386.043a6.364 6.364 0 013.327 1.506c.916.79 1.743 1.921 2.414 3.5z"/>
+          </svg>
+        `,
+        defaultTooltip: (s) => (s === 'syncing' ? strings.obsidianSyncing : s === 'loading' ? strings.obsidianLoading : s === 'success' ? strings.obsidianSuccess : strings.obsidianIdle)
+      },
+      state,
+      tooltip
+    );
   },
 
   // Show Material Design 3 interactive modal for Obsidian folder and note title confirmation

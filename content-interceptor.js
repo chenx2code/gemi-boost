@@ -270,21 +270,72 @@
     }
   }
 
+  let inFlightBatchexecuteCount = 0;
+
+  function isBatchexecuteUrl(url) {
+    return typeof url === 'string' && url.includes('/_/BardChatUi/data/batchexecute');
+  }
+
+  function emitRpcActivity(phase) {
+    try {
+      window.postMessage(
+        {
+          source: 'gemiboost-main',
+          type: 'RPC_ACTIVITY',
+          inFlightCount: inFlightBatchexecuteCount,
+          phase: phase || (inFlightBatchexecuteCount > 0 ? 'start' : 'end'),
+          timestamp: Date.now()
+        },
+        window.location.origin
+      );
+    } catch (e) {}
+  }
+
   // Intercept fetch() responses for Gemini RPCs
   if (typeof window.fetch === 'function') {
     const origFetch = window.fetch;
     window.fetch = function (...args) {
       const reqInfo = args[0];
       const url = typeof reqInfo === 'string' ? reqInfo : (reqInfo && (reqInfo.url || reqInfo.href)) || '';
+      const trackRpc = isBatchexecuteUrl(url);
+      if (trackRpc) {
+        inFlightBatchexecuteCount++;
+        emitRpcActivity('start');
+      }
+
       const promise = origFetch.apply(this, args);
 
       if (isTargetRpcUrl(url)) {
+        let finalized = false;
+        const finishRpc = () => {
+          if (finalized || !trackRpc) return;
+          finalized = true;
+          inFlightBatchexecuteCount = Math.max(0, inFlightBatchexecuteCount - 1);
+          emitRpcActivity('end');
+        };
+
         promise
           .then((res) => {
-            if (!res || !res.ok || typeof res.clone !== 'function') return;
-            readResponseIncremental(res.clone()).catch(() => {});
+            if (!res || !res.ok || typeof res.clone !== 'function') {
+              finishRpc();
+              return;
+            }
+            readResponseIncremental(res.clone())
+              .catch(() => {})
+              .finally(finishRpc);
           })
-          .catch(() => {});
+          .catch(finishRpc);
+      } else if (trackRpc) {
+        promise.then(
+          () => {
+            inFlightBatchexecuteCount = Math.max(0, inFlightBatchexecuteCount - 1);
+            emitRpcActivity('end');
+          },
+          () => {
+            inFlightBatchexecuteCount = Math.max(0, inFlightBatchexecuteCount - 1);
+            emitRpcActivity('end');
+          }
+        );
       }
 
       return promise;
@@ -306,8 +357,14 @@
     };
 
     XMLHttpRequest.prototype.send = function (...args) {
-      if (isTargetRpcUrl(this._gbUrl) && !this._gbLoadHooked) {
-        this._gbLoadHooked = true;
+      if (isBatchexecuteUrl(this._gbUrl) && !this._gbRpcTracked) {
+        this._gbRpcTracked = true;
+        inFlightBatchexecuteCount++;
+        emitRpcActivity('start');
+      }
+
+      if (!this._gbLifecycleHooked) {
+        this._gbLifecycleHooked = true;
         this.addEventListener('load', function () {
           try {
             if (!isTargetRpcUrl(this._gbUrl)) return;
@@ -316,6 +373,13 @@
               processRpcText(this.responseText);
             }
           } catch (e) {}
+        });
+        this.addEventListener('loadend', function () {
+          if (this._gbRpcTracked) {
+            this._gbRpcTracked = false;
+            inFlightBatchexecuteCount = Math.max(0, inFlightBatchexecuteCount - 1);
+            emitRpcActivity('end');
+          }
         });
       }
       return origSend.apply(this, args);
@@ -343,11 +407,18 @@
     };
   }
 
-  // Replay accumulated entries when the ISOLATED world extractor finishes initializing
+  // Replay accumulated entries and RPC activity state when ISOLATED world initializes
   window.addEventListener('message', (event) => {
     if (event.source !== window || event.origin !== window.location.origin) return;
     const data = event.data;
-    if (!data || data.source !== 'gemiboost-isolated' || data.type !== 'REQUEST_IMAGE_FILENAMES') return;
+    if (!data || data.source !== 'gemiboost-isolated') return;
+
+    if (data.type === 'REQUEST_RPC_ACTIVITY') {
+      emitRpcActivity(inFlightBatchexecuteCount > 0 ? 'start' : 'idle');
+      return;
+    }
+
+    if (data.type !== 'REQUEST_IMAGE_FILENAMES') return;
     if (canonicalEntries.size === 0) return;
 
     const entries = [];

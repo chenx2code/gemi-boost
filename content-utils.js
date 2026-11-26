@@ -13,9 +13,26 @@ GemiBoost.Utils = {
     };
   },
 
-  // Promise-based sleep delay
-  sleep: function (ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  // Promise-based sleep delay with optional AbortSignal cancellation
+  sleep: function (ms, signal) {
+    if (signal && signal.aborted) return Promise.resolve();
+    return new Promise((resolve) => {
+      let timer = null;
+      const onAbort = () => {
+        if (timer !== null) clearTimeout(timer);
+        if (signal) signal.removeEventListener('abort', onAbort);
+        resolve();
+      };
+      if (signal && typeof signal.addEventListener === 'function') {
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+      timer = setTimeout(() => {
+        if (signal && typeof signal.removeEventListener === 'function') {
+          signal.removeEventListener('abort', onAbort);
+        }
+        resolve();
+      }, ms);
+    });
   },
 
   // Extract chat ID from current URL pathname (/app/<chatId>)
@@ -74,6 +91,65 @@ GemiBoost.Utils = {
       }
     }
     return text;
+  },
+
+  // Retrieve full text + attachment count from earliest query to avoid 40-char truncation collisions
+  getFirstQuerySignature: function (firstEl) {
+    const first = firstEl || document.querySelector(GemiBoost.Config.SELECTORS.USER_QUERY);
+    if (!first) return '';
+    const cleanText = this.getCleanPromptText(first);
+    const attCount = first.querySelectorAll
+      ? first.querySelectorAll('img, .file-preview-container, [class*="file-preview"], [class*="submitted-quote"]').length
+      : 0;
+    return `${cleanText}|${attCount}`;
+  },
+
+  // Capture current scroll anchor element so reading position can be restored after prepended hydration
+  captureScrollAnchor: function (scroller) {
+    if (!scroller) return null;
+    const initialScrollTop = scroller.scrollTop || 0;
+    let anchorEl = null;
+    let offsetFromTop = 0;
+
+    if (typeof scroller.getBoundingClientRect === 'function' && typeof document !== 'undefined') {
+      const scrollerRect = scroller.getBoundingClientRect();
+      const queries = document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY);
+      for (const q of queries) {
+        if (typeof q.getBoundingClientRect !== 'function') continue;
+        const rect = q.getBoundingClientRect();
+        if (rect.bottom >= scrollerRect.top - 20) {
+          anchorEl = q;
+          offsetFromTop = rect.top - scrollerRect.top;
+          break;
+        }
+      }
+    }
+
+    return {
+      scrollTop: initialScrollTop,
+      anchorEl,
+      offsetFromTop
+    };
+  },
+
+  // Restore scroll position accurately relative to captured anchor element (fallback to raw scrollTop)
+  restoreScrollAnchor: function (scroller, anchor) {
+    if (!scroller || !anchor) return;
+    if (
+      anchor.anchorEl &&
+      anchor.anchorEl.isConnected &&
+      typeof anchor.anchorEl.getBoundingClientRect === 'function' &&
+      typeof scroller.getBoundingClientRect === 'function'
+    ) {
+      const scrollerRect = scroller.getBoundingClientRect();
+      const rect = anchor.anchorEl.getBoundingClientRect();
+      const delta = (rect.top - scrollerRect.top) - anchor.offsetFromTop;
+      if (Math.abs(delta) > 1) {
+        scroller.scrollTop = Math.max(0, scroller.scrollTop + delta);
+      }
+      return;
+    }
+    scroller.scrollTop = Math.max(0, anchor.scrollTop || 0);
   },
 
   // Strip leading slash command or skill identifier (e.g. "/multi-subagent-search ")
