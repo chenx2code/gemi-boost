@@ -753,6 +753,7 @@ GemiBoost.UI = {
       const li = document.createElement('li');
       li.className = item.className || 'gemiboost-toc-item';
       li.dataset.queryIndex = item.queryIndex !== undefined ? String(item.queryIndex) : '';
+      li.dataset.itemType = item.type || '';
       if (item.subIndex !== undefined) {
         li.dataset.subIndex = String(item.subIndex);
       }
@@ -813,8 +814,17 @@ GemiBoost.UI = {
       let displayContent = item.display || '';
       if (item.type === 'image') {
         const isPlaceholder = (val) => {
-          if (!val) return true;
+          if (GemiBoost.Extractor && GemiBoost.Extractor.isPlaceholderImageLabel) {
+            return GemiBoost.Extractor.isPlaceholderImageLabel(val);
+          }
+          if (!val || typeof val !== 'string') return true;
           const clean = val.trim().toLowerCase();
+          if (!clean) return true;
+          const isRealImageFile =
+            /\.(?:png|jpe?g|gif|webp|bmp|svg|ico|tiff?|heic|heif|avif|jfif)$/i.test(clean) &&
+            !clean.startsWith('show the uploaded image') &&
+            !clean.startsWith('open the uploaded image');
+          if (isRealImageFile) return false;
           return (
             clean === 'uploaded image preview' ||
             clean === 'uploaded image' ||
@@ -823,15 +833,36 @@ GemiBoost.UI = {
             clean === 'preview' ||
             clean === 'image' ||
             clean === '[image]' ||
+            clean === 'open image in lightbox' ||
+            clean === 'remove attachment' ||
+            clean === 'delete attachment' ||
+            clean === 'image attachment' ||
+            clean === 'user uploaded image' ||
             clean === '图片' ||
             clean === '上传的图片预览' ||
+            clean === '上传的图片' ||
             clean === '图片预览' ||
+            clean === '预览图片' ||
+            clean === '移除图片' ||
+            clean === '删除图片' ||
+            clean === '移除附件' ||
+            clean === '删除附件' ||
+            clean === '图片附件' ||
             clean.includes('in a lightbox') ||
-            clean.startsWith('show the uploaded image')
+            clean.startsWith('show the uploaded image') ||
+            clean.startsWith('open image') ||
+            clean.startsWith('view image') ||
+            clean.startsWith('remove image') ||
+            clean.startsWith('delete image') ||
+            clean.startsWith('打开图片') ||
+            clean.startsWith('查看图片') ||
+            clean.startsWith('查看大图') ||
+            clean.startsWith('在灯箱中显示')
           );
         };
 
-        if (item.isDefaultName || isPlaceholder(displayContent) || !displayContent) {
+        const rawImageLabel = (item.fileName || displayContent.replace(/^\[[^\]]+\]\s*/, '')).trim();
+        if (item.isDefaultName || isPlaceholder(rawImageLabel) || !displayContent) {
           const total = item.totalImages || 1;
           const idx = item.imageIndex !== undefined ? item.imageIndex : (item.subIndex || 0);
           const base = total > 1 ? `${strings.imageLabel} ${idx + 1}` : strings.imageLabel;
@@ -1205,7 +1236,8 @@ GemiBoost.UI = {
         const matchesQuery = String(item.queryIndex) === el.dataset.queryIndex;
         const elSub = el.dataset.subIndex || '';
         const itemSub = item.subIndex !== undefined ? String(item.subIndex) : '';
-        const isExactTarget = matchesQuery && elSub === itemSub;
+        const typeMatches = !item.type || !el.dataset.itemType || el.dataset.itemType === item.type;
+        const isExactTarget = matchesQuery && elSub === itemSub && typeMatches;
         const isTurnRoot = matchesQuery && (el.dataset.isTurnRoot === 'true' || elSub === '');
 
         // Active state: target item and its turn root badge are active

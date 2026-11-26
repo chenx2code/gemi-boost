@@ -130,6 +130,13 @@ GemiBoost.Exporter = {
           onComplete: (fullItems) => {
             if (chatId && fullItems && fullItems.length > 0 && GemiBoost.Storage) {
               GemiBoost.Storage.saveChatCache(chatId, fullItems, true);
+              if (GemiBoost.App) {
+                GemiBoost.App.cachedChatData = {
+                  version: GemiBoost.Config ? GemiBoost.Config.CACHE_VERSION : 4,
+                  isFullySynced: true,
+                  items: fullItems
+                };
+              }
             }
             resolve();
           },

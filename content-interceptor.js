@@ -9,6 +9,32 @@
   const MAX_STORED_ENTRIES = 1000;
   const canonicalEntries = new Map();
   const lookupMap = new Map();
+  const normalizedRefCount = new Map();
+  const IMAGE_EXT_RE = /\.(?:png|jpe?g|gif|webp|bmp|svg|ico|tiff?|heic|heif|avif|jfif|dng|raw|psd)$/i;
+  const OPAQUE_ID_RE = /^(?:rc|c|r)_[a-zA-Z0-9_-]{4,}$/;
+
+  function isPlaceholderText(trimmedLower) {
+    return (
+      !trimmedLower ||
+      trimmedLower === 'uploaded image preview' ||
+      trimmedLower === 'uploaded image' ||
+      trimmedLower === 'image preview' ||
+      trimmedLower === 'preview image' ||
+      trimmedLower === 'preview' ||
+      trimmedLower === 'image' ||
+      trimmedLower === '[image]' ||
+      trimmedLower === '图片' ||
+      trimmedLower === '上传的图片预览' ||
+      trimmedLower === '上传的图片' ||
+      trimmedLower === '图片预览' ||
+      trimmedLower.includes('in a lightbox') ||
+      trimmedLower.startsWith('show the uploaded image') ||
+      trimmedLower.startsWith('open image') ||
+      trimmedLower.startsWith('view image') ||
+      trimmedLower.startsWith('remove image') ||
+      trimmedLower.startsWith('delete image')
+    );
+  }
 
   // Strip query strings, hash fragments, and trailing Google FIFE size/option suffixes (e.g. =s1024-rj)
   function normalizeImageUrl(url) {
@@ -41,7 +67,15 @@
     if (/^https?:\/\//i.test(trimmed)) return false;
     if (trimmed.startsWith('$')) return false;
     if (/[\\\/\r\n\0]/.test(trimmed)) return false;
+    if (OPAQUE_ID_RE.test(trimmed)) return false;
+    if (isPlaceholderText(trimmed.toLowerCase())) return false;
     return true;
+  }
+
+  function isValidRpcImageFilename(val) {
+    if (!isValidFilename(val)) return false;
+    const trimmed = val.trim();
+    return IMAGE_EXT_RE.test(trimmed);
   }
 
   // Recursively locate [..., fileName, imageUrl, ...] pairs in parsed Gemini RPC payloads
@@ -53,7 +87,7 @@
         const cur = node[i];
         if (cur && typeof cur === 'object') {
           extractImageEntries(cur, out, depth + 1);
-        } else if (i > 0 && isValidImageUrl(cur) && isValidFilename(node[i - 1])) {
+        } else if (i > 0 && isValidImageUrl(cur) && isValidRpcImageFilename(node[i - 1])) {
           out.push({ url: cur, fileName: node[i - 1].trim() });
         }
       }
@@ -93,6 +127,24 @@
     }
   }
 
+  function incrementNormalizedRef(normalized) {
+    if (!normalized) return;
+    normalizedRefCount.set(normalized, (normalizedRefCount.get(normalized) || 0) + 1);
+  }
+
+  function decrementNormalizedRef(normalized) {
+    if (!normalized) return;
+    const nextCount = (normalizedRefCount.get(normalized) || 0) - 1;
+    if (nextCount <= 0) {
+      normalizedRefCount.delete(normalized);
+      if (!canonicalEntries.has(normalized)) {
+        lookupMap.delete(normalized);
+      }
+    } else {
+      normalizedRefCount.set(normalized, nextCount);
+    }
+  }
+
   function recordEntries(entries) {
     if (!entries || entries.length === 0) return;
 
@@ -106,17 +158,22 @@
         continue;
       }
 
-      if (canonicalEntries.size >= MAX_STORED_ENTRIES && !canonicalEntries.has(entry.url)) {
+      const isNewCanonical = !canonicalEntries.has(entry.url);
+      if (isNewCanonical && canonicalEntries.size >= MAX_STORED_ENTRIES) {
         const oldestKey = canonicalEntries.keys().next().value;
         if (oldestKey) {
           canonicalEntries.delete(oldestKey);
-          lookupMap.delete(oldestKey);
-          const oldestNormalized = normalizeImageUrl(oldestKey);
-          if (oldestNormalized) lookupMap.delete(oldestNormalized);
+          if (!normalizedRefCount.has(oldestKey)) {
+            lookupMap.delete(oldestKey);
+          }
+          decrementNormalizedRef(normalizeImageUrl(oldestKey));
         }
       }
 
       canonicalEntries.set(entry.url, entry.fileName);
+      if (isNewCanonical) {
+        incrementNormalizedRef(normalized);
+      }
       lookupMap.set(entry.url, entry.fileName);
       if (normalized) {
         lookupMap.set(normalized, entry.fileName);
@@ -144,6 +201,7 @@
     }
 
     const collected = [];
+    let parsedAnyLine = false;
     const lines = text.split('\n');
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
@@ -152,13 +210,63 @@
 
       try {
         const parsed = JSON.parse(line);
+        parsedAnyLine = true;
         collectFromRpcNode(parsed, collected, 0);
         extractImageEntries(parsed, collected, 0);
       } catch (e) {}
     }
 
+    // Fallback for multi-line formatted JSON payloads
+    if (!parsedAnyLine) {
+      const trimmed = text.trim();
+      if (trimmed && (trimmed[0] === '[' || trimmed[0] === '{')) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          collectFromRpcNode(parsed, collected, 0);
+          extractImageEntries(parsed, collected, 0);
+        } catch (e) {}
+      }
+    }
+
     if (collected.length > 0) {
       recordEntries(collected);
+    }
+  }
+
+  async function readResponseIncremental(clonedRes) {
+    if (!clonedRes.body || typeof clonedRes.body.getReader !== 'function' || typeof TextDecoder === 'undefined') {
+      const fullText = await clonedRes.text();
+      processRpcText(fullText);
+      return;
+    }
+
+    const reader = clonedRes.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          buffer += decoder.decode(value, { stream: true });
+          const lastNl = buffer.lastIndexOf('\n');
+          if (lastNl !== -1) {
+            const completePart = buffer.slice(0, lastNl + 1);
+            buffer = buffer.slice(lastNl + 1);
+            processRpcText(completePart);
+          }
+        }
+      }
+    } catch (e) {
+      // Flush whatever complete or trailing chunks arrived before stream abort/close
+    } finally {
+      try {
+        buffer += decoder.decode();
+      } catch (e) {}
+      if (buffer.trim()) {
+        processRpcText(buffer);
+      }
     }
   }
 
@@ -174,7 +282,7 @@
         promise
           .then((res) => {
             if (!res || !res.ok || typeof res.clone !== 'function') return;
-            res.clone().text().then(processRpcText).catch(() => {});
+            readResponseIncremental(res.clone()).catch(() => {});
           })
           .catch(() => {});
       }
@@ -198,9 +306,12 @@
     };
 
     XMLHttpRequest.prototype.send = function (...args) {
-      if (isTargetRpcUrl(this._gbUrl)) {
+      if (isTargetRpcUrl(this._gbUrl) && !this._gbLoadHooked) {
+        this._gbLoadHooked = true;
         this.addEventListener('load', function () {
           try {
+            if (!isTargetRpcUrl(this._gbUrl)) return;
+            if (typeof this.status === 'number' && this.status !== 0 && (this.status < 200 || this.status >= 300)) return;
             if (this.responseType === '' || this.responseType === 'text') {
               processRpcText(this.responseText);
             }
@@ -223,7 +334,7 @@
           typeof File !== 'undefined' &&
           obj instanceof File &&
           obj.name &&
-          (!obj.type || obj.type.startsWith('image/'))
+          (obj.type ? obj.type.startsWith('image/') : IMAGE_EXT_RE.test(obj.name))
         ) {
           recordEntries([{ url: blobUrl, fileName: obj.name }]);
         }

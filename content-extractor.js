@@ -4,9 +4,75 @@
 window.GemiBoost = window.GemiBoost || {};
 
 GemiBoost.Extractor = {
+  MAX_IMAGE_FILENAME_MAP_SIZE: 2000,
   imageFilenameMap: new Map(),
   _onImageFilenamesUpdated: null,
   _interceptorBridgeBound: false,
+
+  // Identify generic UI placeholder labels vs real image filenames
+  isPlaceholderImageLabel: function (val) {
+    if (!val || typeof val !== 'string') return true;
+    const clean = val.trim().toLowerCase();
+    if (!clean) return true;
+
+    const hasImageExt = /\.(?:png|jpe?g|gif|webp|bmp|svg|ico|tiff?|heic|heif|avif|jfif|dng|raw|psd)$/i.test(clean);
+    if (
+      hasImageExt &&
+      !clean.startsWith('show the uploaded image') &&
+      !clean.startsWith('open the uploaded image')
+    ) {
+      return false;
+    }
+
+    return (
+      clean === 'uploaded image preview' ||
+      clean === 'uploaded image' ||
+      clean === 'image preview' ||
+      clean === 'preview image' ||
+      clean === 'preview' ||
+      clean === 'image' ||
+      clean === '[image]' ||
+      clean === 'open image in lightbox' ||
+      clean === 'remove attachment' ||
+      clean === 'delete attachment' ||
+      clean === 'image attachment' ||
+      clean === 'user uploaded image' ||
+      clean === '图片' ||
+      clean === '上传的图片预览' ||
+      clean === '上传的图片' ||
+      clean === '图片预览' ||
+      clean === '预览图片' ||
+      clean === '移除图片' ||
+      clean === '删除图片' ||
+      clean === '移除附件' ||
+      clean === '删除附件' ||
+      clean === '图片附件' ||
+      clean.includes('in a lightbox') ||
+      clean.startsWith('show the uploaded image') ||
+      clean.startsWith('open image') ||
+      clean.startsWith('view image') ||
+      clean.startsWith('remove image') ||
+      clean.startsWith('delete image') ||
+      clean.startsWith('打开图片') ||
+      clean.startsWith('查看图片') ||
+      clean.startsWith('查看大图') ||
+      clean.startsWith('在灯箱中显示')
+    );
+  },
+
+  // Set key in bounded Map to avoid unbounded growth over long sessions
+  _setBoundedImageFilename: function (key, value) {
+    if (!key) return false;
+    if (this.imageFilenameMap.get(key) === value) return false;
+    if (!this.imageFilenameMap.has(key) && this.imageFilenameMap.size >= this.MAX_IMAGE_FILENAME_MAP_SIZE) {
+      const oldestKey = this.imageFilenameMap.keys().next().value;
+      if (oldestKey !== undefined) {
+        this.imageFilenameMap.delete(oldestKey);
+      }
+    }
+    this.imageFilenameMap.set(key, value);
+    return true;
+  },
 
   // Normalize image URL by stripping query params, hash fragments, and FIFE trailing options
   normalizeImageUrl: function (url) {
@@ -23,15 +89,13 @@ GemiBoost.Extractor = {
       const entry = entries[i];
       if (!entry || typeof entry.url !== 'string' || typeof entry.fileName !== 'string') continue;
       const cleanName = entry.fileName.trim();
-      if (!cleanName) continue;
+      if (!cleanName || this.isPlaceholderImageLabel(cleanName)) continue;
 
-      if (this.imageFilenameMap.get(entry.url) !== cleanName) {
-        this.imageFilenameMap.set(entry.url, cleanName);
+      if (this._setBoundedImageFilename(entry.url, cleanName)) {
         hasUpdates = true;
       }
       const normalized = this.normalizeImageUrl(entry.url);
-      if (normalized && this.imageFilenameMap.get(normalized) !== cleanName) {
-        this.imageFilenameMap.set(normalized, cleanName);
+      if (normalized && this._setBoundedImageFilename(normalized, cleanName)) {
         hasUpdates = true;
       }
     }
@@ -89,8 +153,9 @@ GemiBoost.Extractor = {
   getPromptTextWithoutAttachments: function (promptEl, attachmentEls = []) {
     if (!promptEl) return '';
     const textNode = promptEl.querySelector?.(GemiBoost.Config.SELECTORS.QUERY_TEXT) || promptEl;
+    const isWholePromptFallback = textNode === promptEl;
     const hasNestedAttachments =
-      textNode === promptEl ||
+      isWholePromptFallback ||
       (typeof textNode.contains === 'function' && attachmentEls.some((el) => el && textNode.contains(el)));
 
     if (!hasNestedAttachments || typeof textNode.cloneNode !== 'function') {
@@ -98,15 +163,37 @@ GemiBoost.Extractor = {
     }
 
     const clone = textNode.cloneNode(true);
-    const selectorsToStrip = [
+    const baseSelectorsToStrip = [
       GemiBoost.Config.SELECTORS.FILE_CONTAINER,
-      GemiBoost.Config.SELECTORS.QUOTE_CONTAINER,
+      '.submitted-quote-container',
+      '.submitted-quote-in-query',
+      '[class*="submitted-quote"]',
+      '.quote-preview-container',
+      '[class*="quote-preview"]',
+      '.citation-preview',
+      '[class*="citation-preview"]',
       '[data-test-id*="file-preview"]',
       '[data-test-id*="attachment"]'
-    ].filter(Boolean).join(', ');
+    ];
+    if (isWholePromptFallback) {
+      baseSelectorsToStrip.push(
+        GemiBoost.Config.SELECTORS.QUOTE_CONTAINER,
+        '[class*="image-preview"]',
+        '[data-test-id*="image-preview"]',
+        'button',
+        'mat-icon',
+        'gem-icon'
+      );
+    }
+    const selectorsToStrip = baseSelectorsToStrip.filter(Boolean).join(', ');
 
-    if (selectorsToStrip && typeof clone.querySelectorAll === 'function') {
-      clone.querySelectorAll(selectorsToStrip).forEach((el) => el.remove());
+    if (typeof clone.querySelectorAll === 'function') {
+      if (selectorsToStrip) {
+        clone.querySelectorAll(selectorsToStrip).forEach((el) => el.remove());
+      }
+      if (GemiBoost.Config.SELECTORS.HIDDEN_LABEL) {
+        clone.querySelectorAll(GemiBoost.Config.SELECTORS.HIDDEN_LABEL).forEach((el) => el.remove());
+      }
     }
 
     let text = clone.textContent ? clone.textContent.trim() : '';
@@ -125,12 +212,18 @@ GemiBoost.Extractor = {
     const text = fileText || (fileEl && fileEl.textContent ? fileEl.textContent.trim() : '');
     const lines = text.split('\n').map((l) => l.trim()).filter((l) => l);
     const labelEl = fileEl && fileEl.querySelector?.('[data-test-id="filename-label"], .filename-label');
-    const labelText = labelEl && labelEl.textContent ? labelEl.textContent.trim() : '';
+    const labelText = labelEl && labelEl.textContent ? labelEl.textContent.replace(/\s+/g, ' ').trim() : '';
     const visibleName = labelText || (lines.length > 1 ? lines[lines.length - 1] : (lines[0] || ''));
 
+    const matIcons = fileEl && fileEl.querySelectorAll ? Array.from(fileEl.querySelectorAll('mat-icon') || []) : [];
+    const hasFolderMatIcon = matIcons.some((m) => {
+      const iconText = `${m.textContent || ''} ${m.getAttribute?.('fontIcon') || ''} ${m.getAttribute?.('data-mat-icon-name') || ''}`.toLowerCase();
+      return iconText.includes('folder');
+    });
     const isFolder = Boolean(
       fileEl && (
-        (fileEl.querySelector?.('mat-icon') && fileEl.querySelector('mat-icon').textContent.trim().toLowerCase().includes('folder')) ||
+        hasFolderMatIcon ||
+        fileEl.matches?.('[class*="folder"]') ||
         fileEl.querySelector?.('[aria-label*="folder" i]') !== null ||
         fileEl.querySelector?.('[class*="folder"]') !== null ||
         fileEl.querySelector?.('img[alt*="folder" i]') !== null
@@ -139,87 +232,122 @@ GemiBoost.Extractor = {
 
     let fullFileName = visibleName;
     let resolvedName = visibleName;
-    const attrCandidates = [];
+    const rawAttrCandidates = [];
     if (fileEl) {
-      attrCandidates.push(
-        fileEl.getAttribute?.('data-filename'),
-        fileEl.getAttribute?.('data-name')
+      rawAttrCandidates.push(
+        { raw: fileEl.getAttribute?.('data-filename'), allowStrip: false },
+        { raw: fileEl.getAttribute?.('data-name'), allowStrip: false }
       );
       const dataFileEl = fileEl.querySelector?.('[data-filename], [data-name]');
       if (dataFileEl) {
-        attrCandidates.push(
-          dataFileEl.getAttribute?.('data-filename'),
-          dataFileEl.getAttribute?.('data-name')
+        rawAttrCandidates.push(
+          { raw: dataFileEl.getAttribute?.('data-filename'), allowStrip: false },
+          { raw: dataFileEl.getAttribute?.('data-name'), allowStrip: false }
         );
       }
       const buttons = fileEl.querySelectorAll?.('button[aria-label]') || [];
       for (const btn of buttons) {
         const label = btn.getAttribute?.('aria-label');
-        if (label) attrCandidates.push(label);
+        if (label) rawAttrCandidates.push({ raw: label, allowStrip: true });
       }
-      attrCandidates.push(
-        fileEl.getAttribute?.('aria-label'),
-        fileEl.getAttribute?.('title')
+      rawAttrCandidates.push(
+        { raw: fileEl.getAttribute?.('aria-label'), allowStrip: true },
+        { raw: fileEl.getAttribute?.('title'), allowStrip: true }
       );
     }
 
     const visibleLower = visibleName.toLowerCase();
-    const visiblePrefix = visibleName.replace(/\.+$/, '').toLowerCase();
+    const visibleHasEllipsis = visibleName.endsWith('...') || visibleName.endsWith('…');
+    const visiblePrefix = visibleName.replace(/[.\u2026]+$/, '').toLowerCase();
     let matchedFullAttr = false;
+    let fallbackExtCandidate = '';
+    let fallbackRawCandidate = '';
 
-    for (const rawCand of attrCandidates) {
-      if (!rawCand || typeof rawCand !== 'string') continue;
-      const cand = rawCand.trim();
+    const isVisibleNameMatch = (cand, extMatch) => {
+      const baseName = cand.slice(0, extMatch.index).toLowerCase();
+      return (
+        !visibleName ||
+        cand.toLowerCase() === visibleLower ||
+        visibleLower === baseName ||
+        (baseName.length >= 2 && visibleLower.includes(baseName)) ||
+        (visibleHasEllipsis && visiblePrefix.length >= 3 && baseName.startsWith(visiblePrefix))
+      );
+    };
+
+    for (const entry of rawAttrCandidates) {
+      if (!entry || !entry.raw || typeof entry.raw !== 'string') continue;
+      const cand = entry.raw.trim();
       if (!cand) continue;
-      const cleaned = cand
-        .replace(/^(?:open|view|preview|download|remove|delete|打开|查看|预览|下载|移除|删除)\s+/i, '')
-        .trim();
-      if (!cleaned) continue;
+      if (!fallbackRawCandidate) fallbackRawCandidate = cand;
 
-      const candExtMatch = cleaned.match(/\.([a-zA-Z0-9]{1,10})$/);
-      if (candExtMatch) {
-        fullFileName = cleaned;
-        const baseName = cleaned.slice(0, candExtMatch.index).toLowerCase();
-        if (
-          !visibleName ||
-          cleaned.toLowerCase() === visibleLower ||
-          visibleLower === baseName ||
-          (baseName.length >= 2 && visibleLower.includes(baseName)) ||
-          (visiblePrefix.length >= 3 && visibleName.endsWith('...') && baseName.startsWith(visiblePrefix))
-        ) {
-          resolvedName = cleaned;
-          matchedFullAttr = true;
+      const variants = [cand];
+      if (entry.allowStrip) {
+        const stripped = cand
+          .replace(/^(?:open|view|preview|download|remove|delete|打开|查看|预览|下载|移除|删除)\s+/i, '')
+          .trim();
+        if (stripped && stripped !== cand) {
+          variants.push(stripped);
         }
-        break;
       }
-      if (!fullFileName) {
-        fullFileName = cleaned;
+
+      for (const variant of variants) {
+        const extMatch = variant.match(/\.([a-zA-Z0-9]{1,10})$/);
+        if (extMatch && !/^\d+$/.test(extMatch[1])) {
+          if (!fallbackExtCandidate) {
+            fallbackExtCandidate = variant;
+          }
+          if (isVisibleNameMatch(variant, extMatch)) {
+            fullFileName = variant;
+            resolvedName = variant;
+            matchedFullAttr = true;
+            break;
+          }
+        }
       }
+      if (matchedFullAttr) break;
+    }
+
+    if (!matchedFullAttr && fallbackExtCandidate) {
+      fullFileName = fallbackExtCandidate;
+    } else if (!fullFileName && fallbackRawCandidate) {
+      fullFileName = fallbackRawCandidate;
     }
 
     let fileType = 'File';
     let ext = '';
-    const extMatch = fullFileName.match(/\.([a-zA-Z0-9]+)$/);
-    if (extMatch) {
+    const extMatch = fullFileName.match(/\.([a-zA-Z0-9]{1,10})$/);
+    if (isFolder) {
+      fileType = 'Folder';
+    } else if (extMatch && !/^\d+$/.test(extMatch[1])) {
       ext = extMatch[1].toUpperCase();
       fileType = ext;
-    } else if (isFolder) {
-      fileType = 'Folder';
     } else if (fileEl) {
       const iconImg = fileEl.querySelector?.('img[alt*="icon" i]');
       if (iconImg && iconImg.alt) {
-        const altType = iconImg.alt.replace(/icon/i, '').trim().toUpperCase();
-        if (altType.length > 0 && altType.length <= 5) {
-          fileType = altType;
-          ext = altType;
+        const altLower = iconImg.alt.toLowerCase();
+        if (altLower.includes('google docs') || altLower.includes('docs icon')) {
+          fileType = 'DOC';
+          ext = 'DOC';
+        } else if (altLower.includes('google sheets') || altLower.includes('sheets icon')) {
+          fileType = 'SHEET';
+          ext = 'SHEET';
+        } else if (altLower.includes('google slides') || altLower.includes('slides icon')) {
+          fileType = 'SLIDE';
+          ext = 'SLIDE';
+        } else {
+          const altType = iconImg.alt.replace(/icon/i, '').trim().toUpperCase();
+          if (altType.length > 0 && altType.length <= 5) {
+            fileType = altType;
+            ext = altType;
+          }
         }
       }
     }
 
-    // Strip redundant leading type badge (e.g. "PDF attention_is_all_you_need") if no full filename attr matched
-    if (!matchedFullAttr && ext && resolvedName && fileEl && typeof fileEl.querySelectorAll === 'function') {
+    // Strip redundant leading type badge (e.g. "PDF attention_is_all_you_need") only when separated by whitespace
+    if (!matchedFullAttr && !labelText && ext && resolvedName && fileEl && typeof fileEl.querySelectorAll === 'function') {
       const upperResolved = resolvedName.toUpperCase();
-      if (upperResolved.startsWith(ext) && resolvedName.length > ext.length) {
+      if (upperResolved.startsWith(ext) && /^\s+/.test(resolvedName.slice(ext.length))) {
         const remainder = resolvedName.slice(ext.length).trim();
         if (remainder) {
           const allChildren = Array.from(fileEl.querySelectorAll('*') || []);
@@ -430,7 +558,9 @@ GemiBoost.Extractor = {
             fileName: fInfo.fileName,
             display: displayLabel,
             title: fInfo.fileName,
-            className: 'gemiboost-toc-item gemiboost-toc-attachment',
+            className: fIdx === 0
+              ? 'gemiboost-toc-item'
+              : 'gemiboost-toc-item gemiboost-toc-attachment',
             queryIndex: index,
             subIndex: fInfo.subIndex,
             rawText: rawText
@@ -460,32 +590,7 @@ GemiBoost.Extractor = {
 
   // Extract clean image info, resolving true filename if present, or human-friendly label
   extractImageInfo: function (img, imgIdx, totalImages) {
-    const isPlaceholder = (val) => {
-      if (!val || typeof val !== 'string') return true;
-      const clean = val.trim().toLowerCase();
-      return (
-        !clean ||
-        clean === 'uploaded image preview' ||
-        clean === 'uploaded image' ||
-        clean === 'image preview' ||
-        clean === 'preview image' ||
-        clean === 'preview' ||
-        clean === 'image' ||
-        clean === '[image]' ||
-        clean === '上传的图片预览' ||
-        clean === '上传的图片' ||
-        clean === '图片预览' ||
-        clean === '图片' ||
-        clean.includes('in a lightbox') ||
-        clean.startsWith('show the uploaded image') ||
-        clean.startsWith('view image') ||
-        clean.startsWith('remove image') ||
-        clean.startsWith('delete image') ||
-        clean.startsWith('查看图片') ||
-        clean.startsWith('查看大图') ||
-        clean.startsWith('在灯箱中显示')
-      );
-    };
+    const isPlaceholder = (val) => this.isPlaceholderImageLabel(val);
 
     // 1. Check explicit filename attributes and intercepted RPC metadata (without stripping name prefixes)
     let realName = '';
@@ -497,13 +602,26 @@ GemiBoost.Extractor = {
       interceptedName
     ];
 
-    const container = img.closest(
+    const rawContainer = img.closest(
       '.file-preview-container, [class*="file-preview"], [class*="image-preview"], [class*="preview"], [role="group"]'
     );
-    if (container) {
+    let scopedContainer = rawContainer;
+    if (rawContainer && typeof rawContainer.querySelectorAll === 'function') {
+      const groupImgs = rawContainer.querySelectorAll('img');
+      if (groupImgs && groupImgs.length > 1) {
+        const tightWrapper = img.closest('.image-preview, [class*="image-preview"], [class*="thumbnail"], [data-test-id*="image"]');
+        if (tightWrapper && (!tightWrapper.querySelectorAll || tightWrapper.querySelectorAll('img').length <= 1)) {
+          scopedContainer = tightWrapper;
+        } else {
+          scopedContainer = null;
+        }
+      }
+    }
+
+    if (scopedContainer) {
       directCandidates.push(
-        container.getAttribute('data-filename'),
-        container.getAttribute('data-name')
+        scopedContainer.getAttribute('data-filename'),
+        scopedContainer.getAttribute('data-name')
       );
     }
 
@@ -518,28 +636,30 @@ GemiBoost.Extractor = {
     if (!realName) {
       const heuristicCandidates = [img.title, img.alt];
 
-      if (container) {
+      if (scopedContainer) {
         heuristicCandidates.push(
-          container.title,
-          container.getAttribute('aria-label')
+          scopedContainer.title,
+          scopedContainer.getAttribute('aria-label')
         );
 
-        // Check buttons inside container (e.g. view full screen or remove)
-        const btns = container.querySelectorAll('button[aria-label]');
+        // Check buttons inside scoped single-image container
+        const btns = scopedContainer.querySelectorAll('button[aria-label]');
         for (const btn of btns) {
           const btnLabel = btn.getAttribute('aria-label');
           if (btnLabel && !isPlaceholder(btnLabel)) {
-            // If aria-label looks like "Remove 000217.png" or "000217.png"
-            const match = btnLabel.match(/([^\s\/\\:*\?"<>|]+\.[a-zA-Z0-9]{2,5})/);
-            if (match) heuristicCandidates.push(match[1]);
-            else heuristicCandidates.push(btnLabel);
+            const stripped = btnLabel.replace(/^(?:remove|delete|view|open|preview|download|show|移除|删除|查看|打开|预览|下载)\s+/i, '').trim();
+            if (stripped && !isPlaceholder(stripped)) {
+              const extMatch = stripped.match(/([^\/\\:*\?"<>|]+\.[a-zA-Z0-9]{2,5})$/);
+              if (extMatch) heuristicCandidates.push(extMatch[1]);
+              else heuristicCandidates.push(stripped);
+            }
           }
         }
       }
 
       for (const cand of heuristicCandidates) {
         if (cand && !isPlaceholder(cand)) {
-          const cleaned = cand.replace(/^(remove|delete|view)\s+/i, '').trim();
+          const cleaned = cand.replace(/^(?:remove|delete|view|open|preview|download|移除|删除|查看|打开|预览|下载)\s+/i, '').trim();
           if (cleaned && !isPlaceholder(cleaned)) {
             realName = cleaned;
             break;
@@ -641,46 +761,22 @@ GemiBoost.Extractor = {
     const text = fileText || fileEl.textContent || '';
     const cleanText = text.trim();
 
-    // 0. Explicit file attachment indicators (Luminous file cards or filename-only aria-labels) are never quotes
+    // 0. Explicit Luminous file cards are never quotes
     if (
       fileEl.matches?.('[data-test-id="uploaded-file"], .new-file-preview-container, .new-file-preview-file') ||
       fileEl.querySelector?.('[data-test-id="uploaded-file"], [data-test-id="filename-label"], [data-test-id="luminous-file-icon"], .new-file-preview-file')
     ) {
       return false;
     }
-    const btns = fileEl.querySelectorAll?.('button[aria-label]') || [];
-    for (const btn of btns) {
-      const label = (btn.getAttribute?.('aria-label') || '').trim();
-      const cleanedLabel = label
-        .replace(/^(?:open|view|preview|download|remove|delete|打开|查看|预览|下载|移除|删除)\s+/i, '')
-        .trim();
-      if (
-        cleanedLabel.length <= 150 &&
-        !/^https?:\/\//i.test(cleanedLabel) &&
-        /^[^\/\\:*?"<>|\r\n]+\.[a-zA-Z0-9]{1,8}$/.test(cleanedLabel)
-      ) {
-        return false;
-      }
-    }
 
-    // 1. Selector match on container itself or descendant quote wrappers (e.g. .submitted-quote-container, blockquote)
-    if (GemiBoost.Config?.SELECTORS?.QUOTE_CONTAINER) {
-      if (fileEl.matches?.(GemiBoost.Config.SELECTORS.QUOTE_CONTAINER)) {
-        return true;
-      }
-      if (fileEl.querySelector?.(GemiBoost.Config.SELECTORS.QUOTE_CONTAINER)) {
-        return true;
-      }
-    }
+    // 1. Explicit quote wrappers, material/gem quote icons, and leading quote arrows
     if (
-      fileEl.closest?.('[class*="quote"], [class*="citation"], [data-test-id*="quote"]') ||
-      fileEl.matches?.('[class*="quote"], [class*="citation"], [data-test-id*="quote"]') ||
-      fileEl.querySelector?.('.submitted-quote-container, .submitted-quote-in-query, [class*="submitted-quote"], blockquote, gem-icon.submitted-quote-icon, gem-icon[class*="quote" i]')
+      fileEl.matches?.('.submitted-quote-container, .submitted-quote-in-query, [class*="submitted-quote"], .quote-preview-container, [class*="quote-preview"]') ||
+      fileEl.querySelector?.('.submitted-quote-container, .submitted-quote-in-query, [class*="submitted-quote"], .quote-preview-container, [class*="quote-preview"], gem-icon.submitted-quote-icon, gem-icon[class*="quote" i]')
     ) {
       return true;
     }
 
-    // 2. Icon check: Material icon, gem-icon, or SVG for reply/quote/prompt_suggestion
     const quoteIconNames = [
       'prompt_suggestion', 'submitted-quote-icon',
       'subdirectory_arrow_right', 'reply', 'reply_all', 'format_quote', 'quote',
@@ -692,6 +788,7 @@ GemiBoost.Extractor = {
     const iconEls = fileEl.querySelectorAll?.(
       'gem-icon, mat-icon, .material-icons, .material-symbols-outlined, [class*="mat-icon"], svg'
     );
+    let hasCurvedSvgArrow = false;
     if (iconEls && iconEls.length > 0) {
       for (const iconEl of iconEls) {
         // Exclude close/delete action buttons
@@ -712,7 +809,7 @@ GemiBoost.Extractor = {
           return true;
         }
 
-        // Check SVG curved/hook arrow path characteristics if it is an SVG
+        // Record SVG curved/hook arrow path as fallback (after filename guard, since CSV/PDF SVGs also contain 'C')
         if (iconEl.tagName && iconEl.tagName.toLowerCase() === 'svg') {
           const pathEl = iconEl.querySelector('path');
           const pathD = pathEl ? (pathEl.getAttribute('d') || '') : '';
@@ -723,13 +820,13 @@ GemiBoost.Extractor = {
             pathD.includes('15.5 11') ||
             pathD.includes('19 15')
           ) {
-            return true;
+            hasCurvedSvgArrow = true;
           }
         }
       }
     }
 
-    // 3. Leading quote arrow symbol check (↪ \u21AA, ↳ \u21B3, ↵ \u21B5, ⤷ \u2937, ↩ \u21A9, ⮑ \u2B91, etc.)
+    // 2. Leading quote arrow symbol check (↪ \u21AA, ↳ \u21B3, ↵ \u21B5, ⤷ \u2937, ↩ \u21A9, ⮑ \u2B91, etc.)
     if (
       /^[↪↳↵⤷↩⮑⮡➜➔→]/i.test(cleanText) ||
       cleanText.includes('↪') ||
@@ -739,7 +836,48 @@ GemiBoost.Extractor = {
       return true;
     }
 
-    // 4. Attribute / aria-label check on container or descendant elements
+    // 3. Button filename guard to prevent real files (including SVGs with 'C' paths or names containing "quote") from matching generic quote rules
+    const btns = fileEl.querySelectorAll?.('button[aria-label]') || [];
+    for (const btn of btns) {
+      const label = (btn.getAttribute?.('aria-label') || '').trim();
+      const cleanedLabel = label
+        .replace(/^(?:open|view|preview|download|remove|delete|打开|查看|预览|下载|移除|删除)\s+/i, '')
+        .trim();
+      const extMatch = cleanedLabel.match(/\.([a-zA-Z0-9]{1,10})$/);
+      if (
+        extMatch &&
+        !/^\d+$/.test(extMatch[1]) &&
+        cleanedLabel.length <= 150 &&
+        !/^https?:\/\//i.test(cleanedLabel) &&
+        !/\s.*\.(?:com|org|net|edu|gov)$/i.test(cleanedLabel) &&
+        /^[^\/\\:*?"<>|\r\n]+\.[a-zA-Z0-9]{1,10}$/.test(cleanedLabel)
+      ) {
+        return false;
+      }
+    }
+
+    if (hasCurvedSvgArrow) {
+      return true;
+    }
+
+    // 5. Generic configured quote/citation selector match
+    if (GemiBoost.Config?.SELECTORS?.QUOTE_CONTAINER) {
+      if (fileEl.matches?.(GemiBoost.Config.SELECTORS.QUOTE_CONTAINER)) {
+        return true;
+      }
+      if (fileEl.querySelector?.(GemiBoost.Config.SELECTORS.QUOTE_CONTAINER)) {
+        return true;
+      }
+    }
+    if (
+      fileEl.closest?.('[class*="quote"], [class*="citation"], [data-test-id*="quote"]') ||
+      fileEl.matches?.('[class*="quote"], [class*="citation"], [data-test-id*="quote"]') ||
+      fileEl.querySelector?.('blockquote')
+    ) {
+      return true;
+    }
+
+    // 6. Attribute / aria-label check on container or descendant elements
     const aria = ((fileEl.getAttribute && fileEl.getAttribute('aria-label')) || '').toLowerCase();
     if (
       aria.includes('quote') || aria.includes('citation') || aria.includes('selected') || aria.includes('引用')
@@ -753,11 +891,9 @@ GemiBoost.Extractor = {
       return true;
     }
 
-    // 5. Heuristic check:
-    // If it has NO file extension, is not a folder, has no image/video/audio,
-    // has no file size metadata, and has no document/file icon.
-    // In Gemini, any non-file text container matching the preview selector in user-query is a quoted selection!
-    const hasExtension = /\.[a-zA-Z0-9]{1,8}($|\s|\))/i.test(cleanText);
+    // 7. Heuristic check: no filename extension at line end, not folder/media/file-size/file-icon
+    const endExtMatch = cleanText.match(/\.([a-zA-Z0-9]{1,10})$/m);
+    const hasExtension = Boolean(endExtMatch && !/^\d+$/.test(endExtMatch[1]));
     const isFolder =
       Boolean(fileEl.matches?.('[class*="folder"]')) ||
       fileEl.querySelector?.('[class*="folder"]') !== null ||
@@ -914,7 +1050,9 @@ GemiBoost.Extractor = {
       } else if (category === 'text') {
         attTag = `[${ext || 'Text'}] ${fName}`;
       } else if (category === 'image' || isImageFile) {
-        if (images.length === 0) {
+        if (fName && !this.isPlaceholderImageLabel(fName) && /\.[a-zA-Z0-9]{2,5}$/.test(fName)) {
+          attTag = `[${ext || 'IMG'}] ${fName}`;
+        } else if (images.length === 0) {
           attTag = '[Image]';
         }
       } else if (hasFileExtension || fileEl.matches(GemiBoost.Config.SELECTORS.FILE_CONTAINER)) {

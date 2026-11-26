@@ -406,8 +406,7 @@ body[data-theme="dark"],
 
 /* Keep clear visual separation after the last attachment before the next turn */
 .gemiboost-toc-item.gemiboost-toc-attachment:has(+ .gemiboost-toc-item:not(.gemiboost-toc-attachment)) {
-  margin-bottom: 6px;
-  padding-bottom: 5px;
+  margin-bottom: 8px;
 }
 
 .gemiboost-toc-item:hover {

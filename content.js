@@ -10,6 +10,7 @@ GemiBoost.App = {
   lastQueryCount: 0,
   lastSignature: '',
   initAttempts: 0,
+  _metadataUpdateTimer: null,
 
   // Initialize extension on page load
   init: function () {
@@ -18,11 +19,17 @@ GemiBoost.App = {
       GemiBoost.Notification.init();
     }
     if (GemiBoost.Extractor && GemiBoost.Extractor.setOnImageFilenamesUpdated) {
-      const debouncedMetadataUpdate = GemiBoost.Utils.debounce(() => {
-        this.updateCatalog();
-      }, 80);
       GemiBoost.Extractor.setOnImageFilenamesUpdated(() => {
-        debouncedMetadataUpdate();
+        const scheduledUrl = this.currentUrl;
+        if (this._metadataUpdateTimer) {
+          clearTimeout(this._metadataUpdateTimer);
+        }
+        this._metadataUpdateTimer = setTimeout(() => {
+          this._metadataUpdateTimer = null;
+          if (this.currentUrl === scheduledUrl) {
+            this.updateCatalog();
+          }
+        }, 80);
       });
     }
     this.tryInjectUI();
@@ -50,6 +57,7 @@ GemiBoost.App = {
       const chatId = GemiBoost.Utils.getChatId();
       if (chatId) {
         GemiBoost.Storage.loadChatCache(chatId, (cached) => {
+          if (GemiBoost.Utils.getChatId() !== chatId) return;
           if (cached && cached.items && cached.items.length > 0) {
             this.cachedChatData = cached;
             this.updateCatalog();
@@ -184,6 +192,7 @@ GemiBoost.App = {
     const domItems = GemiBoost.Extractor.extractFromDOM();
     const mergeResult = GemiBoost.Storage.mergeWithCache(domItems, this.cachedChatData);
 
+    let savedInThisPass = false;
     if (mergeResult.isCorrupted) {
       this.cachedChatData = null;
     } else if (mergeResult.hasChanges && this.cachedChatData) {
@@ -191,23 +200,64 @@ GemiBoost.App = {
       const chatId = GemiBoost.Utils.getChatId();
       if (chatId) {
         GemiBoost.Storage.saveChatCache(chatId, mergeResult.updatedList, true);
+        savedInThisPass = true;
       }
     }
 
     const finalItems = mergeResult.items;
 
-    // Synchronize canonical queryIndex back onto live DOM nodes to align with virtualized cache
+    // Synchronize canonical queryIndex back onto live DOM nodes monotonically to handle repeated/empty prompts
     const livePrompts = Array.from(document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY));
     const turnRoots = finalItems.filter((it) => it.isTurnRoot !== false);
-    livePrompts.forEach((promptEl) => {
-      const text = GemiBoost.Utils ? GemiBoost.Utils.getCleanPromptText(promptEl) : '';
-      if (text) {
-        const match = turnRoots.find((t) => t.rawText === text);
-        if (match && typeof match.queryIndex === 'number') {
-          promptEl.dataset.gbQueryIndex = String(match.queryIndex);
+    if (livePrompts.length > 0 && turnRoots.length > 0) {
+      let rootCursor = 0;
+      const nonEmptyIndices = [];
+      for (let pi = 0; pi < livePrompts.length; pi++) {
+        const promptEl = livePrompts[pi];
+        const text = GemiBoost.Utils ? GemiBoost.Utils.getCleanPromptText(promptEl) : '';
+        if (text) {
+          let matchIdx = -1;
+          for (let ri = rootCursor; ri < turnRoots.length; ri++) {
+            if (turnRoots[ri].rawText === text) {
+              matchIdx = ri;
+              break;
+            }
+          }
+          if (matchIdx !== -1) {
+            const match = turnRoots[matchIdx];
+            if (typeof match.queryIndex === 'number') {
+              promptEl.dataset.gbQueryIndex = String(match.queryIndex);
+            }
+            rootCursor = matchIdx + 1;
+            nonEmptyIndices.push({ domPos: pi, rootPos: matchIdx });
+          }
         }
       }
-    });
+      // Stamp empty-text (attachment-only) live prompts adjacent to anchored turns
+      if (nonEmptyIndices.length > 0) {
+        const firstAnchor = nonEmptyIndices[0];
+        for (let offset = 1; offset <= firstAnchor.domPos; offset++) {
+          const domPos = firstAnchor.domPos - offset;
+          const rootPos = firstAnchor.rootPos - offset;
+          if (rootPos >= 0 && turnRoots[rootPos] && !turnRoots[rootPos].rawText && typeof turnRoots[rootPos].queryIndex === 'number') {
+            livePrompts[domPos].dataset.gbQueryIndex = String(turnRoots[rootPos].queryIndex);
+          }
+        }
+        const lastAnchor = nonEmptyIndices[nonEmptyIndices.length - 1];
+        for (let domPos = lastAnchor.domPos + 1; domPos < livePrompts.length; domPos++) {
+          const rootPos = lastAnchor.rootPos + (domPos - lastAnchor.domPos);
+          if (rootPos < turnRoots.length && turnRoots[rootPos] && !turnRoots[rootPos].rawText && typeof turnRoots[rootPos].queryIndex === 'number') {
+            livePrompts[domPos].dataset.gbQueryIndex = String(turnRoots[rootPos].queryIndex);
+          }
+        }
+      } else if (turnRoots.length === livePrompts.length) {
+        livePrompts.forEach((promptEl, pi) => {
+          if (typeof turnRoots[pi].queryIndex === 'number') {
+            promptEl.dataset.gbQueryIndex = String(turnRoots[pi].queryIndex);
+          }
+        });
+      }
+    }
 
     if (finalItems.length === 0) {
       if (this.lastQueryCount === 0 && this.lastSignature === 'empty') return;
@@ -225,9 +275,9 @@ GemiBoost.App = {
     this.lastSignature = signature;
     this.lastQueryCount = finalItems.length;
 
-    // Persist cache updates only if this chat was already fully synced
+    // Persist cache updates only once per pass if this chat was already fully synced
     const chatId = GemiBoost.Utils.getChatId();
-    if (chatId && this.cachedChatData?.isFullySynced && !GemiBoost.Sync.isCurrentlySyncing()) {
+    if (!savedInThisPass && chatId && this.cachedChatData?.isFullySynced && !GemiBoost.Sync.isCurrentlySyncing()) {
       GemiBoost.Storage.saveChatCache(chatId, finalItems, true);
     }
 
@@ -253,6 +303,11 @@ GemiBoost.App = {
       // 1. Detect SPA route navigation
       if (this.currentUrl !== location.href) {
         this.currentUrl = location.href;
+
+        if (this._metadataUpdateTimer) {
+          clearTimeout(this._metadataUpdateTimer);
+          this._metadataUpdateTimer = null;
+        }
 
         // Reset notification state so navigation doesn't trigger false alerts
         if (GemiBoost.Notification) {
@@ -284,6 +339,7 @@ GemiBoost.App = {
         const newChatId = GemiBoost.Utils.getChatId();
         if (newChatId) {
           GemiBoost.Storage.loadChatCache(newChatId, (cached) => {
+            if (GemiBoost.Utils.getChatId() !== newChatId) return;
             if (cached && cached.items && cached.items.length > 0) {
               this.cachedChatData = cached;
               this.updateCatalog();
