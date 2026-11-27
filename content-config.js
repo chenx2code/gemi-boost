@@ -25,7 +25,9 @@ GemiBoost.Config = {
     USER_QUERY: 'user-query',
     QUERY_TEXT: '.query-text, p.query-text-line, .query-content',
     HIDDEN_LABEL: '.cdk-visually-hidden, [class*="visually-hidden"]',
-    FILE_CONTAINER: '.file-preview-container, [class*="file-preview"]',
+    FILE_CARD: '[data-test-id="uploaded-file"], .new-file-preview-container',
+    EXPLICIT_QUOTE_CARD: '.submitted-quote-container, .submitted-quote-in-query, .quote-preview-container, .citation-preview',
+    FILE_CONTAINER: '.file-preview-container, [class*="file-preview"], [data-test-id*="file-preview"], [data-test-id="uploaded-file"]',
     QUOTE_CONTAINER: [
       '.submitted-quote-container',
       '.submitted-quote-in-query',
@@ -119,7 +121,7 @@ GemiBoost.Config = {
   },
 
   // Cache schema version for invalidating stale formats
-  CACHE_VERSION: 4,
+  CACHE_VERSION: 5,
 
   // User configurable preferences and storage keys
   SETTINGS: {

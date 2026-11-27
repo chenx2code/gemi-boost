@@ -93,10 +93,23 @@ GemiBoost.Sync = {
         topMatches = firstDomText === firstCached.rawText;
       } else {
         // Pure-attachment Turn #1: verify DOM turn has no text and contains attachment nodes
-        const hasMedia = Boolean(
-          firstDomQuery.querySelector &&
-          firstDomQuery.querySelector('img, .file-preview-container, [class*="file-preview"], [class*="submitted-quote"]')
-        );
+        let hasMedia = false;
+        const extractor = GemiBoost.Extractor;
+        if (extractor && (typeof extractor.getValidImages === 'function' || typeof extractor.getFileAndQuoteElements === 'function')) {
+          const hasImages = typeof extractor.getValidImages === 'function' && extractor.getValidImages(firstDomQuery).length > 0;
+          const hasFiles = !hasImages &&
+            typeof extractor.getFileAndQuoteElements === 'function' &&
+            extractor.getFileAndQuoteElements(firstDomQuery).length > 0;
+          hasMedia = hasImages || hasFiles;
+        } else if (firstDomQuery.querySelector) {
+          const selectors = [
+            'img',
+            GemiBoost.Config?.SELECTORS?.FILE_CONTAINER,
+            GemiBoost.Config?.SELECTORS?.FILE_CARD,
+            GemiBoost.Config?.SELECTORS?.QUOTE_CONTAINER
+          ].filter(Boolean);
+          hasMedia = Boolean(firstDomQuery.querySelector(selectors.join(', ')));
+        }
         topMatches = !firstDomText && hasMedia;
       }
 
