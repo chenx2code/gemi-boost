@@ -3,6 +3,7 @@
   "name": "GemiBoost - Table of Contents for Gemini",
   "version": "1.1.21",
   "description": "A powerful table of contents and chat navigator for Google Gemini Web.",
+  "homepage_url": "https://github.com/chenx2code/gemi-boost",
   "permissions": [
     "storage",
     "notifications"
