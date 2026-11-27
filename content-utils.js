@@ -98,8 +98,16 @@ GemiBoost.Utils = {
     const first = firstEl || document.querySelector(GemiBoost.Config.SELECTORS.USER_QUERY);
     if (!first) return '';
     const cleanText = this.getCleanPromptText(first);
+    const selectors = GemiBoost.Config?.SELECTORS || {};
+    const signatureSelectors = [
+      'img',
+      selectors.FILE_CONTAINER || '.file-preview-container, [class*="file-preview"], [data-test-id*="file-preview"], [data-test-id="uploaded-file"]',
+      selectors.FILE_CARD,
+      selectors.QUOTE_CONTAINER || '[class*="submitted-quote"]',
+      '[data-test-id*="attachment"]'
+    ].filter(Boolean).join(', ');
     const attCount = first.querySelectorAll
-      ? first.querySelectorAll('img, .file-preview-container, [class*="file-preview"], [class*="submitted-quote"]').length
+      ? first.querySelectorAll(signatureSelectors).length
       : 0;
     return `${cleanText}|${attCount}`;
   },

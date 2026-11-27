@@ -203,6 +203,9 @@ GemiBoost.Extractor = {
     const clone = textNode.cloneNode(true);
     const baseSelectorsToStrip = [
       GemiBoost.Config.SELECTORS.FILE_CONTAINER,
+      GemiBoost.Config.SELECTORS.FILE_CARD,
+      'user-query-file-preview',
+      'user-query-file-carousel',
       '.submitted-quote-container',
       '.submitted-quote-in-query',
       '[class*="submitted-quote"]',
@@ -253,20 +256,7 @@ GemiBoost.Extractor = {
     const labelText = labelEl && labelEl.textContent ? labelEl.textContent.replace(/\s+/g, ' ').trim() : '';
     const visibleName = labelText || (lines.length > 1 ? lines[lines.length - 1] : (lines[0] || ''));
 
-    const matIcons = fileEl && fileEl.querySelectorAll ? Array.from(fileEl.querySelectorAll('mat-icon') || []) : [];
-    const hasFolderMatIcon = matIcons.some((m) => {
-      const iconText = `${m.textContent || ''} ${m.getAttribute?.('fontIcon') || ''} ${m.getAttribute?.('data-mat-icon-name') || ''}`.toLowerCase();
-      return iconText.includes('folder');
-    });
-    const isFolder = Boolean(
-      fileEl && (
-        hasFolderMatIcon ||
-        fileEl.matches?.('[class*="folder"]') ||
-        fileEl.querySelector?.('[aria-label*="folder" i]') !== null ||
-        fileEl.querySelector?.('[class*="folder"]') !== null ||
-        fileEl.querySelector?.('img[alt*="folder" i]') !== null
-      )
-    );
+    const isFolder = this._hasFolderIndicator(fileEl);
 
     let fullFileName = visibleName;
     let resolvedName = visibleName;
@@ -412,6 +402,309 @@ GemiBoost.Extractor = {
     };
   },
 
+  // Check whether an element contains folder icon or class indicators
+  _hasFolderIndicator: function (el) {
+    if (!el) return false;
+    const matIcons = el.querySelectorAll ? Array.from(el.querySelectorAll('mat-icon') || []) : [];
+    const hasFolderMatIcon = matIcons.some((m) => {
+      const iconText = `${m.textContent || ''} ${m.getAttribute?.('fontIcon') || ''} ${m.getAttribute?.('data-mat-icon-name') || ''}`.toLowerCase();
+      return iconText.includes('folder');
+    });
+    return Boolean(
+      hasFolderMatIcon ||
+      el.matches?.('[class*="folder"]') ||
+      el.querySelector?.('[aria-label*="folder" i]') !== null ||
+      el.querySelector?.('[class*="folder"]') !== null ||
+      el.querySelector?.('img[alt*="folder" i]') !== null
+    );
+  },
+
+  // Return normalized selector strings for attachment extraction
+  _getAttachmentSelectors: function () {
+    const selectors = GemiBoost.Config?.SELECTORS || {};
+    return {
+      fileCard: selectors.FILE_CARD || '[data-test-id="uploaded-file"], .new-file-preview-container',
+      explicitQuoteCard: selectors.EXPLICIT_QUOTE_CARD || '.submitted-quote-container, .submitted-quote-in-query, .quote-preview-container, .citation-preview',
+      fileContainer: selectors.FILE_CONTAINER || '.file-preview-container, [class*="file-preview"], [data-test-id*="file-preview"], [data-test-id="uploaded-file"]',
+      quoteContainer: selectors.QUOTE_CONTAINER || '',
+      hiddenLabel: selectors.HIDDEN_LABEL || '.cdk-visually-hidden, [class*="visually-hidden"]'
+    };
+  },
+
+  // Extract visible text from an element while omitting visually-hidden nodes and optional noise selectors
+  _getElementTextWithoutHidden: function (el, extraStripSelector = '') {
+    if (!el) return '';
+    const { hiddenLabel } = this._getAttachmentSelectors();
+    if (typeof el.cloneNode === 'function') {
+      const clone = el.cloneNode(true);
+      const stripSel = [hiddenLabel, extraStripSelector].filter(Boolean).join(', ');
+      if (stripSel && typeof clone.querySelectorAll === 'function') {
+        clone.querySelectorAll(stripSel).forEach((node) => node.remove());
+      }
+      return (clone.textContent || '').trim();
+    }
+    return (el.textContent || '').trim();
+  },
+
+  // Check whether an <img> element is a candidate user-uploaded image (excluding avatars, UI/file icons, and hidden nodes)
+  _isUploadedImageCandidate: function (img) {
+    if (!img) return false;
+    const { hiddenLabel } = this._getAttachmentSelectors();
+    if (
+      img.classList?.contains('user-icon') ||
+      img.classList?.contains('avatar') ||
+      img.classList?.contains('luminous-file-icon') ||
+      img.getAttribute?.('data-test-id') === 'luminous-file-icon' ||
+      img.getAttribute?.('aria-hidden') === 'true' ||
+      (hiddenLabel && img.closest?.(hiddenLabel)) ||
+      img.closest?.('[data-test-id="luminous-file-icon"], .luminous-file-icon')
+    ) {
+      return false;
+    }
+
+    const src = img.currentSrc || img.src || img.getAttribute?.('src') || '';
+    if (src && (src.includes('googleusercontent.com/a/') || src.includes('gstatic.com'))) {
+      return false;
+    }
+
+    const alt = (img.getAttribute?.('alt') || img.alt || '').trim();
+    if (alt && /\bicon$/i.test(alt) && !/\.[a-zA-Z0-9]{2,5}$/i.test(alt)) {
+      return false;
+    }
+
+    return true;
+  },
+
+  // Check whether an extension string corresponds to an image format
+  _isImageExtension: function (ext) {
+    return /^(?:png|jpe?g|gif|webp|bmp|svg|ico|tiff?|heic|heif|avif|jfif|dng|raw|psd)$/i.test(ext || '');
+  },
+
+  // Detect pure image preview containers already handled by getValidImages so they are never duplicated as file rows
+  isPureImagePreviewElement: function (el) {
+    if (!el) return false;
+    const { fileCard, explicitQuoteCard } = this._getAttachmentSelectors();
+
+    if (
+      el.matches?.(`${fileCard}, .new-file-preview-file`) ||
+      el.querySelector?.(`${fileCard}, .new-file-preview-file, [data-test-id="filename-label"], .filename-label, [data-test-id="luminous-file-icon"], .luminous-file-icon`)
+    ) {
+      return false;
+    }
+
+    if (
+      el.matches?.(explicitQuoteCard) ||
+      el.querySelector?.(`${explicitQuoteCard}, gem-icon.submitted-quote-icon, gem-icon[class*="quote" i], blockquote`) ||
+      el.querySelector?.('video, audio') ||
+      this._hasFolderIndicator(el)
+    ) {
+      return false;
+    }
+
+    const hasExplicitPreviewImg = Boolean(
+      el.matches?.('button.preview-image-button, [data-test-id="uploaded-img"], img.preview-image') ||
+      el.querySelector?.('img[data-test-id="uploaded-img"], img.preview-image, button.preview-image-button')
+    );
+    const candidateImgs = el.querySelectorAll
+      ? Array.from(el.querySelectorAll('img')).filter((img) => this._isUploadedImageCandidate(img))
+      : [];
+    if (!hasExplicitPreviewImg && candidateImgs.length === 0) {
+      return false;
+    }
+
+    // Reject if any button label advertises a non-image file extension
+    const buttons = el.querySelectorAll?.('button[aria-label]') || [];
+    for (const btn of buttons) {
+      const label = (btn.getAttribute?.('aria-label') || '').trim();
+      const cleaned = label
+        .replace(/^(?:open|view|preview|download|remove|delete|show|打开|查看|预览|下载|移除|删除)\s+/i, '')
+        .trim();
+      const extMatch = cleaned.match(/\.([a-zA-Z0-9]{1,10})$/);
+      if (
+        extMatch &&
+        !/^\d+$/.test(extMatch[1]) &&
+        !this._isImageExtension(extMatch[1]) &&
+        !/^https?:\/\//i.test(cleaned) &&
+        !/\s.*\.(?:com|org|net|edu|gov)$/i.test(cleaned)
+      ) {
+        return false;
+      }
+    }
+
+    const nonButtonText = this._getElementTextWithoutHidden(el, 'button, mat-icon, gem-icon, svg');
+    if (!nonButtonText || this.isPlaceholderImageLabel(nonButtonText)) {
+      return true;
+    }
+
+    const textExtMatch = nonButtonText.match(/\.([a-zA-Z0-9]{1,10})$/m);
+    if (textExtMatch && !/^\d+$/.test(textExtMatch[1])) {
+      return this._isImageExtension(textExtMatch[1]);
+    }
+
+    return false;
+  },
+
+  // Check whether an element represents a standalone file or quote card (rather than an icon/action sub-part)
+  _isStandaloneAttachmentCard: function (el) {
+    if (!el || this.isPureImagePreviewElement(el)) return false;
+    const { fileCard, explicitQuoteCard } = this._getAttachmentSelectors();
+    if (el.matches?.(fileCard) || el.matches?.(explicitQuoteCard)) return true;
+
+    const cleanText = this._getElementTextWithoutHidden(el);
+    if (!cleanText && !el.querySelector?.('video, audio')) return false;
+    if (el.matches?.('button, mat-icon, gem-icon, svg, img')) return false;
+
+    const nonActionText = this._getElementTextWithoutHidden(el, 'button, mat-icon, gem-icon, svg, img');
+    const hasMetadataAttr = Boolean(
+      el.querySelector?.('[data-test-id="filename-label"], .filename-label, [data-filename], [data-name], video, audio') ||
+      el.getAttribute?.('data-filename') ||
+      el.getAttribute?.('data-name')
+    );
+
+    // Reject action-only button wrappers (e.g. a Download/Remove button container)
+    if (!nonActionText && !hasMetadataAttr) {
+      const btns = Array.from(el.querySelectorAll?.('button[aria-label]') || []);
+      const hasCardButton = btns.some((btn) => {
+        const label = (btn.getAttribute?.('aria-label') || '').trim();
+        if (!label) return false;
+        const isActionOnly = /^(?:open|view|preview|download|remove|delete|close|clear|打开|查看|预览|下载|移除|删除|关闭)\b/i.test(label);
+        if (isActionOnly) return false;
+        return /\.[a-zA-Z0-9]{1,10}$/.test(label);
+      });
+      if (!hasCardButton) return false;
+    }
+
+    if (
+      hasMetadataAttr ||
+      el.matches?.('.file-preview-container, user-query-file-preview, .query-file-preview, [data-test-id*="file-preview"], [data-test-id*="attachment"]') ||
+      this._hasFolderIndicator(el)
+    ) {
+      return true;
+    }
+
+    if (/\.[a-zA-Z0-9]{1,10}$/m.test(cleanText)) {
+      return true;
+    }
+
+    // Only treat nested elements as standalone quote cards via explicit quote indicators (never Rule 7 fallback on file sub-parts)
+    return Boolean(
+      el.matches?.('[class*="quote"], [class*="citation"], [data-test-id*="quote"], [data-test-id*="citation"], blockquote') ||
+      el.querySelector?.(`${explicitQuoteCard}, gem-icon.submitted-quote-icon, gem-icon[class*="quote" i], blockquote`) ||
+      /^[↪↳↵⤷↩⮑⮡➜➔→]/.test(cleanText)
+    );
+  },
+
+  // Resolve ordered individual file and quote attachment card elements within a prompt node
+  getFileAndQuoteElements: function (promptEl) {
+    if (!promptEl || typeof promptEl.querySelectorAll !== 'function') return [];
+
+    const { fileCard, explicitQuoteCard, fileContainer, quoteContainer, hiddenLabel } = this._getAttachmentSelectors();
+    const queryParts = [
+      fileContainer,
+      fileCard,
+      quoteContainer,
+      'user-query-file-preview',
+      '.query-file-preview',
+      '[data-test-id*="file-preview"]',
+      '[data-test-id*="attachment"]'
+    ].filter(Boolean);
+
+    const rawMatched = Array.from(promptEl.querySelectorAll(queryParts.join(', '))).filter((el) => {
+      if (!el) return false;
+      if (hiddenLabel && el.closest?.(hiddenLabel)) return false;
+      return true;
+    });
+    if (rawMatched.length === 0) return [];
+
+    const carouselOrSlotSel = 'user-query-file-carousel, .query-file-carousel, user-query-file-preview, .query-file-preview';
+    const explicitSingleSel = [fileCard, explicitQuoteCard].filter(Boolean).join(', ');
+
+    const resolveNode = (el) => {
+      if (el.matches?.(fileCard)) return [el];
+      if (explicitQuoteCard && el.matches?.(explicitQuoteCard) && !el.querySelector?.(explicitSingleSel)) {
+        return [el];
+      }
+
+      const descendants = rawMatched.filter((other) => other !== el && el.contains(other));
+      if (descendants.length === 0) return [el];
+
+      const directChildren = descendants.filter(
+        (d) => !descendants.some((other) => other !== d && other.contains(d))
+      );
+      const resolvedChildren = directChildren.flatMap(resolveNode);
+
+      const hasExplicitDescendant = Boolean(el.querySelector?.(explicitSingleSel));
+      const isCarouselContainer = Boolean(
+        el.matches?.('user-query-file-carousel, .query-file-carousel') ||
+        el.querySelector?.('user-query-file-carousel, .query-file-carousel') ||
+        (!el.matches?.('user-query-file-preview, .query-file-preview') && el.querySelector?.('user-query-file-preview, .query-file-preview'))
+      );
+      if (hasExplicitDescendant || isCarouselContainer) {
+        return resolvedChildren;
+      }
+
+      const standaloneChildren = resolvedChildren.filter((c) => this._isStandaloneAttachmentCard(c));
+      if (standaloneChildren.length >= 2) {
+        return standaloneChildren;
+      }
+
+      // Unwrap mixed non-carousel container holding both a separate uploaded image and standalone file/quote card
+      if (standaloneChildren.length >= 1 && el.querySelectorAll) {
+        const hasSeparateImg = Array.from(el.querySelectorAll('img')).some(
+          (img) => this._isUploadedImageCandidate(img) && !standaloneChildren.some((sc) => sc.contains(img))
+        );
+        if (hasSeparateImg) {
+          return standaloneChildren;
+        }
+      }
+
+      // If this element is a non-card wrapper around a single standalone child (e.g. a carousel slot without FILE_CARD)
+      if (el.matches?.(carouselOrSlotSel) && standaloneChildren.length === 1) {
+        return standaloneChildren;
+      }
+
+      return [el];
+    };
+
+    const topRoots = rawMatched.filter(
+      (el) => !rawMatched.some((other) => other !== el && other.contains(el))
+    );
+
+    const uniqueResolved = [];
+    const seenEls = new Set();
+    topRoots.forEach((root) => {
+      resolveNode(root).forEach((resolvedEl) => {
+        if (resolvedEl && !seenEls.has(resolvedEl)) {
+          seenEls.add(resolvedEl);
+          uniqueResolved.push(resolvedEl);
+        }
+      });
+    });
+
+    return uniqueResolved.filter((el) => {
+      const cleanText = this._getElementTextWithoutHidden(el);
+      if (!cleanText && !el.querySelector?.('video, audio')) return false;
+      if (this.isPureImagePreviewElement(el)) return false;
+      return true;
+    });
+  },
+
+  // Resolve ordered valid user-uploaded <img> elements within a prompt node
+  getValidImages: function (promptEl, resolvedFileEls) {
+    if (!promptEl || typeof promptEl.querySelectorAll !== 'function') return [];
+    const { fileCard } = this._getAttachmentSelectors();
+    const fileEls = Array.isArray(resolvedFileEls) ? resolvedFileEls : this.getFileAndQuoteElements(promptEl);
+
+    return Array.from(promptEl.querySelectorAll('img')).filter((img) => {
+      if (!this._isUploadedImageCandidate(img)) return false;
+      if (img.closest?.(`${fileCard}, .new-file-preview-file`)) return false;
+      if (fileEls.some((fileEl) => fileEl && (fileEl === img || fileEl.contains?.(img)))) {
+        return false;
+      }
+      return true;
+    });
+  },
+
   // Extract structured prompt data items from the current live DOM for TOC navigation
   extractFromDOM: function () {
     const userPrompts = document.querySelectorAll(GemiBoost.Config.SELECTORS.USER_QUERY);
@@ -425,40 +718,19 @@ GemiBoost.Extractor = {
 
       // 1. Text extraction using textContent to prevent empty string from off-screen / content-visibility
       const rawText = this.getCleanPromptText(promptEl);
-      const fileTexts = new Set();
 
-      // 2. Extract independent images (filter out user avatar and Google profile icons)
-      const validImages = Array.from(promptEl.querySelectorAll('img')).filter((img) => {
-        if (img.classList.contains('user-icon') || (img.src && img.src.includes('googleusercontent.com/a/'))) {
-          return false;
-        }
-        const parentFile = img.closest(GemiBoost.Config.SELECTORS.FILE_CONTAINER);
-        if (parentFile && parentFile.textContent && parentFile.textContent.trim()) {
-          return false;
-        }
-        return true;
-      });
-
-      // 3. Extract independent files and quotes
-      const fileSelector = GemiBoost.Config.SELECTORS.QUOTE_CONTAINER
-        ? `${GemiBoost.Config.SELECTORS.FILE_CONTAINER}, ${GemiBoost.Config.SELECTORS.QUOTE_CONTAINER}`
-        : GemiBoost.Config.SELECTORS.FILE_CONTAINER;
-      const rawFiles = Array.from(promptEl.querySelectorAll(fileSelector));
-      // Keep only top-level file containers to prevent nested child elements from duplicating entries
-      const topLevelFiles = rawFiles.filter(
-        (el) => !rawFiles.some((other) => other !== el && other.contains(el))
-      );
+      // 2. Extract independent files/quotes and images via shared resolvers (1-to-1 with navigation targets)
+      const topLevelFiles = this.getFileAndQuoteElements(promptEl);
+      const validImages = this.getValidImages(promptEl, topLevelFiles);
       let text = this.getPromptTextWithoutAttachments(promptEl, topLevelFiles);
       let hasQuote = false;
       const fileInfoList = [];
 
       topLevelFiles.forEach((file, fileIndex) => {
         const fileText = file.textContent ? file.textContent.trim() : '';
-        if (!fileText || fileTexts.has(fileText)) return;
-        fileTexts.add(fileText);
 
         // Check if container represents a quoted text selection (Ask Gemini)
-        const isQuote = this.isQuoteElement(file, fileText);
+        const isQuote = fileText ? this.isQuoteElement(file, fileText) : false;
         if (isQuote) {
           hasQuote = true;
           const cleanQuote = this.extractCleanQuoteText(file) || fileText.replace(/^[↪↳↵⤷↩⮑⮡➜➔→"“'「『«\s]+/, '').replace(/\s+/g, ' ').trim();
@@ -468,6 +740,17 @@ GemiBoost.Extractor = {
             fileCategory: 'quote',
             subIndex: fileIndex,
             isQuote: true
+          });
+          return;
+        }
+
+        if (!fileText && file.querySelector?.('video, audio')) {
+          const isAudioOnly = Boolean(file.querySelector('audio') && !file.querySelector('video'));
+          fileInfoList.push({
+            fileName: isAudioOnly ? 'Audio File' : 'Video File',
+            fileType: isAudioOnly ? 'Audio' : 'Video',
+            fileCategory: isAudioOnly ? 'audio' : 'video',
+            subIndex: fileIndex
           });
           return;
         }
@@ -645,11 +928,25 @@ GemiBoost.Extractor = {
     );
     let scopedContainer = rawContainer;
     if (rawContainer && typeof rawContainer.querySelectorAll === 'function') {
+      const { fileCard } = this._getAttachmentSelectors();
       const groupImgs = rawContainer.querySelectorAll('img');
-      if (groupImgs && groupImgs.length > 1) {
-        const tightWrapper = img.closest('.image-preview, [class*="image-preview"], [class*="thumbnail"], [data-test-id*="image"]');
-        if (tightWrapper && (!tightWrapper.querySelectorAll || tightWrapper.querySelectorAll('img').length <= 1)) {
-          scopedContainer = tightWrapper;
+      const hasSharedAttachmentWrapper = Boolean(
+        rawContainer.querySelector(
+          `${fileCard}, .new-file-preview-file, user-query-file-carousel, .query-file-carousel, [data-test-id="filename-label"], .filename-label`
+        ) ||
+        rawContainer.querySelectorAll('user-query-file-preview, .query-file-preview').length > 1
+      );
+      if ((groupImgs && groupImgs.length > 1) || hasSharedAttachmentWrapper) {
+        const tightWrapper = img.closest(
+          '.image-preview, [class*="image-preview"], [class*="thumbnail"], [data-test-id*="image"], button.preview-image-button, user-query-file-preview'
+        );
+        const resolvedTight = tightWrapper === img ? img.parentElement : tightWrapper;
+        if (
+          resolvedTight &&
+          (!resolvedTight.querySelectorAll || resolvedTight.querySelectorAll('img').length <= 1) &&
+          !resolvedTight.querySelector?.(`${fileCard}, .new-file-preview-file`)
+        ) {
+          scopedContainer = resolvedTight;
         } else {
           scopedContainer = null;
         }
@@ -799,10 +1096,10 @@ GemiBoost.Extractor = {
     const text = fileText || fileEl.textContent || '';
     const cleanText = text.trim();
 
-    // 0. Explicit Luminous file cards are never quotes
+    // 0. Explicit Luminous file cards and uploaded image previews are never quotes
     if (
       fileEl.matches?.('[data-test-id="uploaded-file"], .new-file-preview-container, .new-file-preview-file') ||
-      fileEl.querySelector?.('[data-test-id="uploaded-file"], [data-test-id="filename-label"], [data-test-id="luminous-file-icon"], .new-file-preview-file')
+      fileEl.querySelector?.('[data-test-id="uploaded-file"], [data-test-id="filename-label"], [data-test-id="luminous-file-icon"], .new-file-preview-file, [data-test-id="uploaded-img"], .preview-image')
     ) {
       return false;
     }
@@ -932,12 +1229,7 @@ GemiBoost.Extractor = {
     // 7. Heuristic check: no filename extension at line end, not folder/media/file-size/file-icon
     const endExtMatch = cleanText.match(/\.([a-zA-Z0-9]{1,10})$/m);
     const hasExtension = Boolean(endExtMatch && !/^\d+$/.test(endExtMatch[1]));
-    const isFolder =
-      Boolean(fileEl.matches?.('[class*="folder"]')) ||
-      fileEl.querySelector?.('[class*="folder"]') !== null ||
-      (fileEl.querySelector?.('mat-icon') && (fileEl.querySelector('mat-icon').textContent || '').trim().toLowerCase().includes('folder')) ||
-      (fileEl.querySelector?.('mat-icon') && (fileEl.querySelector('mat-icon').getAttribute('fontIcon') || '').toLowerCase().includes('folder')) ||
-      fileEl.querySelector?.('[aria-label*="folder" i], img[alt*="folder" i]') !== null;
+    const isFolder = this._hasFolderIndicator(fileEl);
     const isMedia = fileEl.querySelector?.('video, audio, img') !== null;
     const isKnownExtensionlessFile = /^(dockerfile|makefile|license|readme|gemfile|procfile|vagrantfile|jenkinsfile)$/i.test(cleanText.trim());
     const hasFileSize = /\b\d+(\.\d+)?\s*(b|kb|mb|gb|tb|bytes|字节|千字节|兆字节)\b/i.test(cleanText);
@@ -979,23 +1271,12 @@ GemiBoost.Extractor = {
 
   // Extract structured user turn (text content and attached multimodal files)
   extractUserTurn: function (promptEl) {
-    // A. Collect image attachments
+    // A. Collect image and file/quote attachments via shared DOM resolvers
     const attachments = [];
+    const fileElements = this.getFileAndQuoteElements(promptEl);
+    const images = this.getValidImages(promptEl, fileElements);
 
     // B. Images uploaded by user
-    const images = Array.from(promptEl.querySelectorAll('img')).filter((img) => {
-      if (
-        img.classList.contains('user-icon') ||
-        img.classList.contains('avatar') ||
-        (img.src && (img.src.includes('googleusercontent.com/a/') || img.src.includes('gstatic.com'))) ||
-        img.getAttribute('aria-hidden') === 'true'
-      ) {
-        return false;
-      }
-      const parentFile = img.closest(GemiBoost.Config.SELECTORS.FILE_CONTAINER);
-      return !(parentFile && parentFile.textContent && parentFile.textContent.trim());
-    });
-
     images.forEach((img, imgIdx) => {
       const imgInfo = this.extractImageInfo(img, imgIdx, images.length);
       if (!imgInfo.isDefaultName && imgInfo.fileName) {
@@ -1005,45 +1286,26 @@ GemiBoost.Extractor = {
       }
     });
 
-    // C. Attached files & documents (strictly match genuine file preview containers)
-    const quoteSelector = GemiBoost.Config?.SELECTORS?.QUOTE_CONTAINER
-      ? `, ${GemiBoost.Config.SELECTORS.QUOTE_CONTAINER}`
-      : '';
-    const rawFileElements = Array.from(
-      promptEl.querySelectorAll(
-        `${GemiBoost.Config.SELECTORS.FILE_CONTAINER}${quoteSelector}, [data-test-id*="file-preview"], [data-test-id*="attachment"]`
-      )
-    );
-
-    // Keep only top-level file containers to prevent nested child elements from duplicating attachments
-    const fileElements = rawFileElements.filter(
-      (el) => !rawFileElements.some((other) => other !== el && other.contains(el))
-    );
-
+    // C. Attached files, documents, and quotes
     let text = this.getPromptTextWithoutAttachments(promptEl, fileElements);
     let hasQuote = false;
-    const seenFileTexts = new Set();
-    const seenAttachments = new Set();
+    const { fileContainer, fileCard } = this._getAttachmentSelectors();
 
     fileElements.forEach((fileEl) => {
-      if (fileEl.closest('.cdk-visually-hidden')) return;
-
       const fileText = fileEl.textContent ? fileEl.textContent.trim() : '';
-      if (!fileText && !fileEl.querySelector('video, audio')) return;
-
-      if (fileText && seenFileTexts.has(fileText)) return;
-      if (fileText) seenFileTexts.add(fileText);
 
       // Check if container represents a quoted text selection (Ask Gemini)
-      if (this.isQuoteElement(fileEl, fileText)) {
+      if (fileText && this.isQuoteElement(fileEl, fileText)) {
         hasQuote = true;
         const cleanQuote = this.extractCleanQuoteText(fileEl) || fileText.replace(/^[↪↳↵⤷↩⮑⮡➜➔→"“'「『«\s]+/, '').replace(/\s+/g, ' ').trim();
         // Quote represents conversation context, keep full text without 100-char truncation
-        const attTag = `[Quote] ${cleanQuote}`;
-        if (!seenAttachments.has(attTag)) {
-          seenAttachments.add(attTag);
-          attachments.push(attTag);
-        }
+        attachments.push(`[Quote] ${cleanQuote}`);
+        return;
+      }
+
+      if (!fileText && fileEl.querySelector?.('video, audio')) {
+        const isAudioOnly = Boolean(fileEl.querySelector('audio') && !fileEl.querySelector('video'));
+        attachments.push(isAudioOnly ? '[Audio] Audio File' : '[Video] Video File');
         return;
       }
 
@@ -1075,7 +1337,7 @@ GemiBoost.Extractor = {
         attTag = `[Folder] ${fName || 'Folder'}`;
       } else if (category === 'audio') {
         attTag = `[Audio] ${fName || 'Audio File'}`;
-      } else if (category === 'video') {
+      } else if (category === 'video' || (!isAudio && fileEl.querySelector?.('video'))) {
         attTag = `[Video] ${fName || 'Video File'}`;
       } else if (category === 'pdf') {
         attTag = `[PDF] ${fName}`;
@@ -1088,19 +1350,18 @@ GemiBoost.Extractor = {
       } else if (category === 'text') {
         attTag = `[${ext || 'Text'}] ${fName}`;
       } else if (category === 'image' || isImageFile) {
-        if (fName && !this.isPlaceholderImageLabel(fName) && /\.[a-zA-Z0-9]{2,5}$/.test(fName)) {
+        if (fName && !this.isPlaceholderImageLabel(fName) && (/\.[a-zA-Z0-9]{2,5}$/.test(fName) || fileEl.matches?.(fileCard))) {
           attTag = `[${ext || 'IMG'}] ${fName}`;
         } else if (images.length === 0) {
           attTag = '[Image]';
         }
-      } else if (hasFileExtension || fileEl.matches(GemiBoost.Config.SELECTORS.FILE_CONTAINER)) {
+      } else if (hasFileExtension || fileEl.matches?.(`${fileContainer}, ${fileCard}`)) {
         if (fName && fName.length < 150) {
           attTag = `[${ext || 'Document'}] ${fName}`;
         }
       }
 
-      if (attTag && !seenAttachments.has(attTag)) {
-        seenAttachments.add(attTag);
+      if (attTag) {
         attachments.push(attTag);
       }
     });

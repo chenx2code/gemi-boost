@@ -174,7 +174,7 @@ GemiBoost.App = {
             GemiBoost.Storage.saveChatCache(chatId, fullItems, true);
           }
           this.cachedChatData = {
-            version: GemiBoost.Config ? GemiBoost.Config.CACHE_VERSION : 4,
+            version: GemiBoost.Config ? GemiBoost.Config.CACHE_VERSION : 5,
             items: fullItems,
             isFullySynced: true,
             updatedAt: Date.now()
@@ -191,17 +191,13 @@ GemiBoost.App = {
       if (GemiBoost.Sync && GemiBoost.Sync.checkAlreadySynced) {
         const check = GemiBoost.Sync.checkAlreadySynced(cachedData);
         if (check.canSkip) {
-          this.lastSignature = '';
-          this.lastQueryCount = 0;
-          this.updateCatalog();
-
           const domItems = GemiBoost.Extractor ? GemiBoost.Extractor.extractFromDOM() : [];
           const chatId = GemiBoost.Utils.getChatId();
           const finalTurnCount = domItems.filter((it) => it.isTurnRoot !== false).length;
 
           if (check.markSynced && chatId && domItems.length > 0) {
             this.cachedChatData = {
-              version: GemiBoost.Config ? GemiBoost.Config.CACHE_VERSION : 4,
+              version: GemiBoost.Config ? GemiBoost.Config.CACHE_VERSION : 5,
               items: domItems,
               isFullySynced: true,
               updatedAt: Date.now()
@@ -210,6 +206,11 @@ GemiBoost.App = {
               GemiBoost.Storage.saveChatCache(chatId, domItems, true);
             }
           }
+
+          // Re-render only after cachedChatData reflects fresh domItems
+          this.lastSignature = '';
+          this.lastQueryCount = 0;
+          this.updateCatalog();
 
           if (GemiBoost.UI && GemiBoost.UI.setSyncButtonState) {
             GemiBoost.UI.setSyncButtonState('synced', `已完整同步全部 ${finalTurnCount} 条历史提问`);
@@ -300,7 +301,7 @@ GemiBoost.App = {
           }
         }
       }
-      // Stamp empty-text (attachment-only) live prompts adjacent to anchored turns
+      // Stamp empty-text (attachment-only) live prompts adjacent to and between anchored turns
       if (nonEmptyIndices.length > 0) {
         const firstAnchor = nonEmptyIndices[0];
         for (let offset = 1; offset <= firstAnchor.domPos; offset++) {
@@ -308,6 +309,31 @@ GemiBoost.App = {
           const rootPos = firstAnchor.rootPos - offset;
           if (rootPos >= 0 && turnRoots[rootPos] && !turnRoots[rootPos].rawText && typeof turnRoots[rootPos].queryIndex === 'number') {
             livePrompts[domPos].dataset.gbQueryIndex = String(turnRoots[rootPos].queryIndex);
+          }
+        }
+        for (let i = 1; i < nonEmptyIndices.length; i++) {
+          const prev = nonEmptyIndices[i - 1];
+          const curr = nonEmptyIndices[i];
+          const domGap = curr.domPos - prev.domPos - 1;
+          const rootGap = curr.rootPos - prev.rootPos - 1;
+          if (domGap > 0 && domGap === rootGap) {
+            let allEmptyRoots = true;
+            for (let offset = 1; offset <= domGap; offset++) {
+              const rt = turnRoots[prev.rootPos + offset];
+              if (!rt || rt.rawText) {
+                allEmptyRoots = false;
+                break;
+              }
+            }
+            if (allEmptyRoots) {
+              for (let offset = 1; offset <= domGap; offset++) {
+                const domPos = prev.domPos + offset;
+                const rt = turnRoots[prev.rootPos + offset];
+                if (typeof rt.queryIndex === 'number') {
+                  livePrompts[domPos].dataset.gbQueryIndex = String(rt.queryIndex);
+                }
+              }
+            }
           }
         }
         const lastAnchor = nonEmptyIndices[nonEmptyIndices.length - 1];
@@ -334,7 +360,9 @@ GemiBoost.App = {
       return;
     }
 
-    const signature = finalItems.map((it) => `${it.queryIndex}:${it.type}:${it.display}`).join('|');
+    const signature = finalItems
+      .map((it) => `${it.queryIndex}:${it.type}:${it.isTurnRoot !== false ? 1 : 0}:${it.subIndex ?? ''}:${it.display}`)
+      .join('|');
     if (signature === this.lastSignature && finalItems.length === this.lastQueryCount) {
       return;
     }

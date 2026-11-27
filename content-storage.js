@@ -294,38 +294,165 @@ GemiBoost.Storage = {
         }
       }
 
+      // Group live DOM items into per-turn slices [start, end)
+      const domTurns = [];
+      let turnStart = 0;
+      for (let di = 1; di < domItems.length; di++) {
+        if (domItems[di].isTurnRoot !== false) {
+          domTurns.push({ start: turnStart, end: di });
+          turnStart = di;
+        }
+      }
+      if (domItems.length > 0) {
+        domTurns.push({ start: turnStart, end: domItems.length });
+      }
+
       let updated = [...cachedItems];
       let hasChanges = false;
       let prependedCount = 0;
+      const domToUpdatedIdx = new Array(domItems.length).fill(-1);
 
       // 1. Prepend historical items loaded at the top
       if (firstDomMatch > 0) {
         const prepended = domItems.slice(0, firstDomMatch);
         prependedCount = prepended.length;
         updated = [...prepended, ...updated];
+        for (let di = 0; di < firstDomMatch; di++) {
+          domToUpdatedIdx[di] = di;
+        }
         hasChanges = true;
       }
 
-      // 2. Append new user messages sent at the bottom
-      if (lastDomMatch !== -1 && lastDomMatch < domItems.length - 1) {
-        const appended = domItems.slice(lastDomMatch + 1);
-        updated = [...updated, ...appended];
-        hasChanges = true;
+      for (let di = 0; di < domItems.length; di++) {
+        if (domToCacheIdx[di] !== -1) {
+          domToUpdatedIdx[di] = domToCacheIdx[di] + prependedCount;
+        }
+      }
+
+      let lastMatchedTurn = null;
+
+      if (firstDomMatch !== -1) {
+        // Reconcile missing child attachments inside any matched DOM turn before appending new trailing turns
+        for (const turn of domTurns) {
+          let firstMatchedUpdatedIdx = -1;
+          let lastMatchedUpdatedIdx = -1;
+          for (let di = turn.start; di < turn.end; di++) {
+            const ui = domToUpdatedIdx[di];
+            if (ui !== -1) {
+              if (firstMatchedUpdatedIdx === -1) firstMatchedUpdatedIdx = ui;
+              lastMatchedUpdatedIdx = ui;
+            }
+          }
+          if (firstMatchedUpdatedIdx === -1) continue;
+          lastMatchedTurn = turn;
+
+          // Resolve the corresponding turn slice [sliceStart, sliceEnd) in updated
+          let sliceStart = firstMatchedUpdatedIdx;
+          while (sliceStart > 0 && updated[sliceStart].isTurnRoot === false) {
+            sliceStart--;
+          }
+          let sliceEnd = sliceStart + 1;
+          while (sliceEnd < updated.length && updated[sliceEnd].isTurnRoot === false) {
+            sliceEnd++;
+          }
+          // Guard against cross-turn ambiguity if two cached roots fell inside one DOM turn
+          if (lastMatchedUpdatedIdx >= sliceEnd) continue;
+
+          // Reconcile any missing child attachment rows (isTurnRoot === false) into [sliceStart, sliceEnd) in order
+          const claimedUpdatedIndices = new Set();
+          for (let di = turn.start; di < turn.end; di++) {
+            const ui = domToUpdatedIdx[di];
+            if (ui >= sliceStart && ui < sliceEnd) {
+              claimedUpdatedIndices.add(ui);
+            }
+          }
+
+          let insertCursor = updated[sliceStart].isTurnRoot !== false ? sliceStart + 1 : sliceStart;
+          for (let di = turn.start; di < turn.end; di++) {
+            const ui = domToUpdatedIdx[di];
+            if (ui >= sliceStart && ui < sliceEnd) {
+              insertCursor = Math.max(insertCursor, ui + 1);
+              continue;
+            }
+
+            const d = domItems[di];
+            if (ui === -1 && d.isTurnRoot === false) {
+              // Check if an unclaimed equivalent item already exists in this cached turn slice
+              let existingIdx = -1;
+              for (let k = sliceStart; k < sliceEnd; k++) {
+                if (!claimedUpdatedIndices.has(k) && isMatch(updated[k], d)) {
+                  existingIdx = k;
+                  break;
+                }
+              }
+
+              if (existingIdx !== -1) {
+                domToUpdatedIdx[di] = existingIdx;
+                claimedUpdatedIndices.add(existingIdx);
+                insertCursor = Math.max(insertCursor, existingIdx + 1);
+              } else {
+                const insertPos = Math.max(insertCursor, updated[sliceStart].isTurnRoot !== false ? sliceStart + 1 : sliceStart);
+                updated.splice(insertPos, 0, { ...d, isTurnRoot: false });
+                sliceEnd++;
+
+                // Shift tracked indices at or after the insertion point
+                for (let k = 0; k < domToUpdatedIdx.length; k++) {
+                  if (domToUpdatedIdx[k] >= insertPos) {
+                    domToUpdatedIdx[k]++;
+                  }
+                }
+                const shiftedClaimed = new Set();
+                for (const cIdx of claimedUpdatedIndices) {
+                  shiftedClaimed.add(cIdx >= insertPos ? cIdx + 1 : cIdx);
+                }
+                claimedUpdatedIndices.clear();
+                for (const cIdx of shiftedClaimed) {
+                  claimedUpdatedIndices.add(cIdx);
+                }
+
+                domToUpdatedIdx[di] = insertPos;
+                claimedUpdatedIndices.add(insertPos);
+                insertCursor = insertPos + 1;
+                hasChanges = true;
+              }
+            }
+          }
+        }
+
+        // 2. Append new user turns sent after the last matched turn
+        const appendStart = lastMatchedTurn ? lastMatchedTurn.end : (lastDomMatch + 1);
+        if (lastDomMatch !== -1 && appendStart < domItems.length) {
+          const baseIdx = updated.length;
+          const appended = domItems.slice(appendStart);
+          updated = [...updated, ...appended];
+          for (let offset = 0; offset < appended.length; offset++) {
+            domToUpdatedIdx[appendStart + offset] = baseIdx + offset;
+          }
+          hasChanges = true;
+        }
       }
 
       // 3. Fallback: If no DOM items matched cached items, append all new items
       if (firstDomMatch === -1 && domItems.length > 0) {
         const usedCacheIdx = new Set();
-        const newItems = domItems.filter((d) => {
+        const newItems = [];
+        const newDomIndices = [];
+        domItems.forEach((d, di) => {
           const found = cachedItems.findIndex((c, idx) => !usedCacheIdx.has(idx) && isMatch(c, d));
           if (found !== -1) {
             usedCacheIdx.add(found);
-            return false;
+            domToUpdatedIdx[di] = found + prependedCount;
+          } else {
+            newItems.push(d);
+            newDomIndices.push(di);
           }
-          return true;
         });
         if (newItems.length > 0) {
-          updated = [...cachedItems, ...newItems];
+          const baseIdx = updated.length;
+          updated = [...updated, ...newItems];
+          newDomIndices.forEach((di, offset) => {
+            domToUpdatedIdx[di] = baseIdx + offset;
+          });
           hasChanges = true;
         }
       }
@@ -343,18 +470,7 @@ GemiBoost.Storage = {
       const matchedCacheIndicesForDom = new Set();
       for (let di = 0; di < domItems.length; di++) {
         const d = domItems[di];
-        let idx = domToCacheIdx[di] !== -1 ? domToCacheIdx[di] + prependedCount : -1;
-        if (idx === -1 && lastDomMatch !== -1 && di > lastDomMatch) {
-          const appendedPos = cachedItems.length + prependedCount + (di - lastDomMatch - 1);
-          if (appendedPos < updated.length && isMatch(updated[appendedPos], d)) {
-            idx = appendedPos;
-          }
-        }
-        if (idx === -1 && firstDomMatch > 0 && di < firstDomMatch) {
-          if (di < updated.length && isMatch(updated[di], d)) {
-            idx = di;
-          }
-        }
+        const idx = domToUpdatedIdx[di];
         if (idx !== -1 && idx < updated.length) {
           matchedCacheIndicesForDom.add(idx);
           const c = updated[idx];

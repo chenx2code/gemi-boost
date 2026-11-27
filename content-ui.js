@@ -1252,27 +1252,47 @@ GemiBoost.UI = {
 
     if (!targetQuery) return null;
 
-    // Resolve sub-element for image or file attachments
+    // Resolve sub-element for image or file attachments using shared Extractor helpers when available
     if (item.type === 'image') {
-      const validImgs = Array.from(targetQuery.querySelectorAll('img')).filter((img) => {
-        if (img.classList.contains('user-icon') || (img.src && img.src.includes('googleusercontent.com/a/'))) {
-          return false;
-        }
-        const parentFile = img.closest(GemiBoost.Config.SELECTORS.FILE_CONTAINER);
-        if (parentFile && parentFile.textContent && parentFile.textContent.trim()) {
-          return false;
-        }
-        return true;
-      });
+      const validImgs = GemiBoost.Extractor && typeof GemiBoost.Extractor.getValidImages === 'function'
+        ? GemiBoost.Extractor.getValidImages(targetQuery)
+        : Array.from(targetQuery.querySelectorAll('img')).filter((img) => {
+            if (
+              img.classList.contains('user-icon') ||
+              img.classList.contains('avatar') ||
+              img.classList.contains('luminous-file-icon') ||
+              img.getAttribute('data-test-id') === 'luminous-file-icon' ||
+              img.getAttribute('aria-hidden') === 'true' ||
+              (img.src && (img.src.includes('googleusercontent.com/a/') || img.src.includes('gstatic.com')))
+            ) {
+              return false;
+            }
+            const hiddenSel = GemiBoost.Config?.SELECTORS?.HIDDEN_LABEL;
+            if (hiddenSel && img.closest(hiddenSel)) {
+              return false;
+            }
+            const fileCardSel = GemiBoost.Config?.SELECTORS?.FILE_CARD || '[data-test-id="uploaded-file"], .new-file-preview-container';
+            if (img.closest(fileCardSel) || img.closest('.new-file-preview-file')) {
+              return false;
+            }
+            return true;
+          });
       return validImgs[item.subIndex || 0] || targetQuery;
     }
 
     if (item.type === 'file') {
-      const fileSelector = GemiBoost.Config.SELECTORS.QUOTE_CONTAINER
-        ? `${GemiBoost.Config.SELECTORS.FILE_CONTAINER}, ${GemiBoost.Config.SELECTORS.QUOTE_CONTAINER}`
-        : GemiBoost.Config.SELECTORS.FILE_CONTAINER;
-      const rawFiles = Array.from(targetQuery.querySelectorAll(fileSelector));
-      const files = rawFiles.filter((el) => !rawFiles.some((other) => other !== el && other.contains(el)));
+      let files;
+      if (GemiBoost.Extractor && typeof GemiBoost.Extractor.getFileAndQuoteElements === 'function') {
+        files = GemiBoost.Extractor.getFileAndQuoteElements(targetQuery);
+      } else {
+        const selectors = [
+          GemiBoost.Config?.SELECTORS?.FILE_CARD,
+          GemiBoost.Config?.SELECTORS?.FILE_CONTAINER,
+          GemiBoost.Config?.SELECTORS?.QUOTE_CONTAINER
+        ].filter(Boolean);
+        const rawFiles = selectors.length > 0 ? Array.from(targetQuery.querySelectorAll(selectors.join(', '))) : [];
+        files = rawFiles.filter((el) => !rawFiles.some((other) => other !== el && other.contains(el)));
+      }
       return files[item.subIndex || 0] || targetQuery;
     }
 
