@@ -37,7 +37,8 @@ const I18N_STRINGS = {
     obsidianVaultTitle: '指定 Vault 库名',
     obsidianVaultDesc: '留空则写入当前正在打开的库',
     autoSaveText: '更改已自动保存',
-    savedFeedback: '设置已保存'
+    savedFeedback: '设置已保存',
+    repoLinkTitle: 'GitHub — 查看开源项目仓库'
   },
   en: {
     sectionTitle: 'Export Preferences',
@@ -60,7 +61,8 @@ const I18N_STRINGS = {
     obsidianVaultTitle: 'Vault name',
     obsidianVaultDesc: 'Leave blank for active vault',
     autoSaveText: 'Changes saved automatically',
-    savedFeedback: 'Settings saved'
+    savedFeedback: 'Settings saved',
+    repoLinkTitle: 'GitHub — View open-source repository'
   }
 };
 
@@ -96,6 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const obsidianVaultDesc = document.getElementById('obsidianVaultDesc');
   const statusIndicator = document.getElementById('statusIndicator');
   const statusText = document.getElementById('statusText');
+  const repoLink = document.getElementById('repoLink');
 
   // Detect language and apply localization
   let isChinese = false;
@@ -131,17 +134,22 @@ document.addEventListener('DOMContentLoaded', () => {
   if (obsidianVaultTitle) obsidianVaultTitle.textContent = strings.obsidianVaultTitle;
   if (obsidianVaultDesc) obsidianVaultDesc.textContent = strings.obsidianVaultDesc;
   if (statusText) statusText.textContent = strings.autoSaveText;
+  if (repoLink) {
+    repoLink.title = strings.repoLinkTitle;
+    repoLink.setAttribute('aria-label', strings.repoLinkTitle);
+  }
 
-  // Retrieve version dynamically from extension manifest
-  if (versionChip) {
-    try {
-      const manifest = typeof chrome !== 'undefined' && chrome.runtime?.getManifest ? chrome.runtime.getManifest() : null;
-      if (manifest && manifest.version) {
-        versionChip.textContent = `v${manifest.version}`;
-      }
-    } catch (e) {
-      // Fallback kept from HTML
+  // Retrieve version and homepage URL dynamically from extension manifest
+  try {
+    const manifest = typeof chrome !== 'undefined' && chrome.runtime?.getManifest ? chrome.runtime.getManifest() : null;
+    if (versionChip && manifest && manifest.version) {
+      versionChip.textContent = `v${manifest.version}`;
     }
+    if (repoLink && manifest && typeof manifest.homepage_url === 'string' && /^https?:\/\//i.test(manifest.homepage_url)) {
+      repoLink.href = manifest.homepage_url;
+    }
+  } catch (e) {
+    // Fallback kept from HTML
   }
 
   // Material Design 3 disabled state handler for dependent target folder field
